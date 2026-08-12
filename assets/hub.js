@@ -1,5 +1,5 @@
 /* ==========================================================================
-   +Learning hub — renders the course grid from window.COURSES (data/courses.js).
+   Ulearn hub — renders the course grid from window.COURSES (data/courses.js).
    Nothing here needs editing when you add a course; add the file and the
    registry, and the card appears.
    ========================================================================== */

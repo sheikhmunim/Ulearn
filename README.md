@@ -1,8 +1,10 @@
-# +Learning
+# Ulearn
 
 A small library of interactive courses that run entirely in the browser. Every
 course is a single self-contained HTML page — no build step, no framework, no
 signup. Open the file and it works.
+
+Built by [Sheikh Munim](https://github.com/sheikhmunim).
 
 **Live site:** https://sheikhmunim.github.io/Ulearn/
 

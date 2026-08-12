@@ -1,5 +1,5 @@
 /* ==========================================================================
-   +Learning hub — landing page only.
+   Ulearn hub — landing page only.
    Deliberately neutral: each course card borrows its own accent colour so the
    grid previews the identity of the page you are about to open.
    ========================================================================== */
@@ -66,21 +66,41 @@ body{
 
 .hero{ padding:64px 0 40px; }
 
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  flex-wrap:wrap; gap:12px;
+  margin-bottom:36px;
+}
+
 .brand{
-  display:inline-flex; align-items:baseline; gap:2px;
+  display:inline-flex; align-items:baseline;
   font-family:var(--display);
   font-weight:700;
-  font-size:15px;
-  letter-spacing:0.02em;
-  margin-bottom:36px;
-  color:var(--muted);
+  font-size:17px;
+  letter-spacing:-0.01em;
+  color:var(--text);
 }
 .brand-mark{
-  color:var(--text);
+  color:#6FD4E0;
   font-size:19px;
   line-height:1;
 }
 .brand-name{ color:var(--text); }
+
+.byline{
+  font-size:12.5px;
+  color:var(--faint);
+  text-decoration:none;
+  white-space:nowrap;
+  transition:color .16s ease;
+}
+.byline strong{
+  font-weight:600;
+  color:var(--muted);
+  transition:color .16s ease;
+}
+.byline:hover{ color:var(--muted); }
+.byline:hover strong{ color:var(--text); }
 
 .hero h1{
   font-family:var(--display);
