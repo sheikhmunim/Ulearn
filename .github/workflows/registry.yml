@@ -1,0 +1,78 @@
+name: Course registry
+
+# On push to main: regenerate data/courses.js from the course files and commit
+# it back, so adding a course really is just "drop the file, push".
+#
+# On pull requests: don't commit anything (we may not have write access to a
+# fork) — just fail with a clear message if the registry is out of date.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "courses/**/index.html"
+      - "scripts/build-registry.mjs"
+      - ".github/workflows/registry.yml"
+  pull_request:
+    paths:
+      - "courses/**/index.html"
+      - "data/courses.js"
+      - "scripts/build-registry.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Never let two rebuilds race each other onto main.
+concurrency:
+  group: registry-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Rebuild registry
+        run: node scripts/build-registry.mjs
+
+      - name: Commit if it changed
+        run: |
+          if git diff --quiet -- data/courses.js; then
+            echo "Registry already up to date — nothing to commit."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/courses.js
+
+          # [skip ci] stops this bot commit from triggering the workflow again.
+          git commit -m "Rebuild course registry [skip ci]"
+          git push
+
+          {
+            echo "### Registry rebuilt"
+            echo '```'
+            git show --stat --oneline HEAD
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check the registry matches the course files
+        run: node scripts/build-registry.mjs --check

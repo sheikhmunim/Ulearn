@@ -63,10 +63,16 @@ descriptive. Any images or data files the course needs live in that same folder.
 <script src="../../assets/course-nav.js"></script>
 ```
 
-Then commit and push. The registry regenerates and the card is live.
+Then commit and push. CI regenerates `data/courses.js` from your metadata,
+commits it back, and Pages redeploys — the card appears on its own.
 
-> **Until the build script lands (phase 3),** also add the matching entry to
-> `data/courses.js` by hand — it's the same fields, copy an existing block.
+To see it locally before pushing, regenerate the registry yourself:
+
+```bash
+npm run build:registry
+```
+
+That's the same script CI runs. It needs Node 18+ and installs nothing.
 
 ---
 
@@ -81,9 +87,19 @@ assets/
   hub.css               landing page styles
   hub.js                renders the grid from the registry
   course-nav.js         injects the back-to-hub pill into any course
-data/courses.js         the registry the hub reads
-scripts/                registry generator
+data/courses.js         GENERATED registry the hub reads — don't hand-edit
+scripts/
+  build-registry.mjs    course files -> data/courses.js
+.github/workflows/
+  registry.yml          rebuilds the registry on push, verifies it on PRs
 ```
+
+### Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run build:registry` | Rewrites `data/courses.js` from the course metadata. |
+| `npm run check:registry` | Exits non-zero if the registry is stale. This is what PR CI runs. |
 
 ### A note on styling
 
