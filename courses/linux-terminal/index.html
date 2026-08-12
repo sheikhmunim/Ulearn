@@ -233,6 +233,52 @@
     caret-color:var(--accent);
   }
 
+  /* ---------- editor overlay (nano / vim) ---------- */
+  .ed{
+    position:fixed; inset:0; z-index:300;
+    background:var(--term); display:none;
+    flex-direction:column;
+    font-family:var(--mono); font-size:13px;
+  }
+  .ed.open{ display:flex; }
+  .ed-top{
+    flex-shrink:0; padding:5px 12px; text-align:center;
+    background:var(--text); color:var(--term); font-weight:600; font-size:12.5px;
+  }
+  .ed-vim .ed-top{ background:var(--panel-2); color:var(--muted); text-align:left; }
+  .ed-body{ flex:1; display:flex; min-height:0; }
+  .ed-gut{
+    flex-shrink:0; padding:8px 8px 8px 12px; text-align:right;
+    color:var(--faint); font-size:12.5px; line-height:1.55; user-select:none;
+    background:rgba(255,255,255,.015);
+    white-space:pre;      /* the numbers are newline-joined — without this they run across */
+    overflow:hidden;
+  }
+  .ed textarea{
+    flex:1; background:transparent; border:0; outline:0; resize:none;
+    color:var(--text); font-family:var(--mono); font-size:13px; line-height:1.55;
+    padding:8px 14px 8px 6px; caret-color:var(--accent);
+  }
+  .ed-msg{
+    flex-shrink:0; padding:3px 12px; min-height:22px;
+    color:var(--amber); font-size:12.5px; text-align:center;
+  }
+  .ed-vim .ed-msg{ text-align:left; }
+  .ed-keys{
+    flex-shrink:0; display:flex; flex-wrap:wrap; gap:0 18px;
+    padding:6px 12px 8px; font-size:12px; color:var(--muted);
+  }
+  .ed-keys b{
+    background:var(--text); color:var(--term);
+    padding:0 3px; font-weight:600; margin-right:5px;
+  }
+  .ed-mode{
+    display:inline-block; padding:0 7px; margin-right:8px;
+    background:var(--accent); color:#170A14; font-weight:700; font-size:11.5px;
+  }
+  .ed-mode.insert{ background:var(--green); }
+  .ed-cmd{ color:var(--text); }
+
   .toast{
     position:fixed; right:18px; bottom:18px; z-index:200;
     background:var(--panel); border:1px solid var(--green);
@@ -271,7 +317,7 @@
   <span class="spacer"></span>
   <button class="tbtn" id="resetFs">reset filesystem</button>
   <span class="pbar"><i id="pfill"></i></span>
-  <span class="ptxt" id="ptxt">0 / 10</span>
+  <span class="ptxt" id="ptxt">0 / 11</span>
 </div>
 
 <div class="app">
@@ -295,6 +341,16 @@
       <input id="cmdin" autocomplete="off" autocapitalize="off" spellcheck="false" autofocus>
     </div>
   </div>
+</div>
+
+<div class="ed" id="ed">
+  <div class="ed-top" id="edTop"></div>
+  <div class="ed-body">
+    <div class="ed-gut" id="edGut">1</div>
+    <textarea id="edText" spellcheck="false" autocomplete="off"></textarea>
+  </div>
+  <div class="ed-msg" id="edMsg"></div>
+  <div class="ed-keys" id="edKeys"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -1828,6 +1884,198 @@ document.querySelector('.term-wrap').addEventListener('click', e => {
 });
 
 /* ==========================================================================
+   4b. Editors — nano and vim
+   ========================================================================== */
+
+const ED = {
+  open:false, kind:'nano', path:'', node:null, parent:null, name:'',
+  dirty:false, mode:'normal', cmd:null, pendingExit:false
+};
+const edEl   = document.getElementById('ed');
+const edText = document.getElementById('edText');
+const edTop  = document.getElementById('edTop');
+const edMsg  = document.getElementById('edMsg');
+const edKeys = document.getElementById('edKeys');
+const edGut  = document.getElementById('edGut');
+
+function edGutter(){
+  const n = edText.value.split('\n').length;
+  edGut.textContent = Array.from({length:n}, (_,i)=>i+1).join('\n');
+}
+edText.addEventListener('input', ()=>{ ED.dirty = true; edGutter(); edChrome(); });
+edText.addEventListener('scroll', ()=>{ edGut.style.transform = `translateY(${-edText.scrollTop}px)`; });
+
+function openEditor(kind, path){
+  const abs = absolute(path);
+  const r = walk(abs, true);
+  if(r.node && r.node.t === 'd') return ERR(`${kind}: ${path}: Is a directory`);
+  if(!r.node && !r.parent) return ERR(`${kind}: ${path}: No such file or directory`);
+
+  ED.open = true; ED.kind = kind; ED.path = path;
+  ED.node = r.node || null; ED.parent = r.parent || null; ED.name = r.name;
+  ED.dirty = false; ED.pendingExit = false;
+  ED.mode = kind === 'nano' ? 'insert' : 'normal';
+  ED.cmd = null;
+
+  edText.value = r.node ? r.node.content : '';
+  edEl.classList.add('open');
+  edEl.classList.toggle('ed-vim', kind !== 'nano');
+  edGutter(); edChrome();
+  setTimeout(()=>{ edText.focus(); edText.setSelectionRange(0,0); }, 0);
+  return OK();
+}
+
+function edSave(){
+  const text = edText.value;
+  if(ED.node) ED.node.content = text;
+  else if(ED.parent){ ED.parent.children[ED.name] = F(text); ED.node = ED.parent.children[ED.name]; }
+  ED.node.mtime = Date.now();
+  ED.dirty = false;
+  return text.split('\n').length;
+}
+
+function closeEditor(msg){
+  ED.open = false;
+  edEl.classList.remove('open');
+  edMsg.textContent = '';
+  const p = document.getElementById('cmdin');
+  if(msg) write(msg);
+  syncPrompt();
+  p.focus();
+  checkTasks('');
+}
+
+function edChrome(){
+  if(ED.kind === 'nano'){
+    edTop.textContent = `  GNU nano 7.2      ${ED.path}${ED.dirty ? '                    Modified' : ''}`;
+    edKeys.innerHTML = [
+      ['^O','Write Out'], ['^X','Exit'], ['^K','Cut Line'], ['^W','Where Is']
+    ].map(([k,l])=>`<span><b>${k}</b>${l}</span>`).join('');
+  } else {
+    const m = ED.mode === 'insert' ? 'INSERT' : ED.cmd !== null ? 'COMMAND' : 'NORMAL';
+    edTop.innerHTML = `<span class="ed-mode ${ED.mode==='insert'?'insert':''}">${m}</span>` +
+      `<span style="color:var(--muted)">"${esc(ED.path)}" ${ED.dirty?'[+]':''}</span>`;
+    edKeys.innerHTML = ED.mode === 'insert'
+      ? `<span><b>Esc</b>back to normal mode</span>`
+      : [['i','insert'],[':w','write'],[':q','quit'],[':wq','write &amp; quit'],[':q!','quit, discard']]
+          .map(([k,l])=>`<span><b>${k}</b>${l}</span>`).join('');
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if(!ED.open) return;
+
+  /* ---------- nano ---------- */
+  if(ED.kind === 'nano'){
+    if(e.ctrlKey && e.key.toLowerCase() === 'o'){
+      e.preventDefault();
+      const n = edSave();
+      edMsg.textContent = `[ Wrote ${n} line${n===1?'':'s'} ]`;
+      edChrome();
+      return;
+    }
+    if(e.ctrlKey && e.key.toLowerCase() === 'x'){
+      e.preventDefault();
+      if(ED.dirty && !ED.pendingExit){
+        ED.pendingExit = true;
+        edMsg.textContent = 'Save modified buffer?  Y Yes   N No   ^C Cancel';
+        return;
+      }
+      closeEditor();
+      return;
+    }
+    if(ED.pendingExit){
+      if(/^[yY]$/.test(e.key)){ e.preventDefault(); const n = edSave(); closeEditor(`<span class="dim">[ Wrote ${n} lines to ${esc(ED.path)} ]</span>`); return; }
+      if(/^[nN]$/.test(e.key)){ e.preventDefault(); closeEditor(); return; }
+      if(e.ctrlKey && e.key.toLowerCase() === 'c'){ e.preventDefault(); ED.pendingExit = false; edMsg.textContent = 'Cancelled'; return; }
+    }
+    if(e.ctrlKey && e.key.toLowerCase() === 'k'){
+      e.preventDefault();
+      const v = edText.value, pos = edText.selectionStart;
+      const s = v.lastIndexOf('\n', pos-1) + 1;
+      let end = v.indexOf('\n', pos); if(end === -1) end = v.length; else end++;
+      edText.value = v.slice(0,s) + v.slice(end);
+      edText.setSelectionRange(s,s);
+      ED.dirty = true; edGutter(); edChrome();
+      return;
+    }
+    return;
+  }
+
+  /* ---------- vim ---------- */
+  if(ED.mode === 'insert'){
+    if(e.key === 'Escape'){ e.preventDefault(); ED.mode = 'normal'; edText.blur(); edChrome(); edMsg.textContent=''; }
+    return;
+  }
+
+  // NORMAL mode: the textarea must not receive the keystrokes
+  e.preventDefault();
+
+  if(ED.cmd !== null){
+    if(e.key === 'Enter'){
+      const c = ED.cmd.trim();
+      ED.cmd = null;
+      if(c === ':w'){ const n = edSave(); edMsg.textContent = `"${ED.path}" ${n}L written`; edChrome(); return; }
+      if(c === ':wq' || c === ':x'){ const n = edSave(); closeEditor(`<span class="dim">"${esc(ED.path)}" ${n}L written</span>`); return; }
+      if(c === ':q'){
+        if(ED.dirty){ edMsg.textContent = 'E37: No write since last change (add ! to override)'; edChrome(); return; }
+        closeEditor(); return;
+      }
+      if(c === ':q!'){ closeEditor(); return; }
+      edMsg.textContent = `E492: Not an editor command: ${c.slice(1)}`;
+      edChrome();
+      return;
+    }
+    if(e.key === 'Escape'){ ED.cmd = null; edMsg.textContent = ''; edChrome(); return; }
+    if(e.key === 'Backspace'){ ED.cmd = ED.cmd.slice(0,-1); if(!ED.cmd) ED.cmd = null; }
+    else if(e.key.length === 1) ED.cmd += e.key;
+    edMsg.innerHTML = `<span class="ed-cmd">${esc(ED.cmd || '')}</span>`;
+    return;
+  }
+
+  if(e.key === ':'){ ED.cmd = ':'; edMsg.innerHTML = '<span class="ed-cmd">:</span>'; edChrome(); return; }
+  if(e.key === 'i'){ ED.mode = 'insert'; edChrome(); edText.focus(); return; }
+  if(e.key === 'a'){ ED.mode = 'insert'; edChrome(); edText.focus(); edText.setSelectionRange(edText.selectionStart+1, edText.selectionStart+1); return; }
+  if(e.key === 'o'){
+    const v = edText.value, pos = edText.selectionStart;
+    let end = v.indexOf('\n', pos); if(end === -1) end = v.length;
+    edText.value = v.slice(0,end) + '\n' + v.slice(end);
+    ED.mode = 'insert'; ED.dirty = true; edGutter(); edChrome();
+    edText.focus(); edText.setSelectionRange(end+1, end+1);
+    return;
+  }
+  if(e.key === 'x'){
+    const v = edText.value, p = edText.selectionStart;
+    edText.value = v.slice(0,p) + v.slice(p+1);
+    ED.dirty = true; edGutter(); edChrome(); return;
+  }
+  edMsg.textContent = '';
+});
+
+def('nano', {
+  cat:'write', desc:'edit a file in a friendly terminal editor',
+  usage:'nano file',
+  man:'A straightforward text editor. It opens with the file loaded and you simply type — no modes to worry about.\n\nThe shortcuts are printed along the bottom, where ^ means Ctrl:\n\n  Ctrl-O   write the file out (save)\n  Ctrl-X   exit — it asks whether to save if you changed anything\n  Ctrl-K   cut the current line\n  Ctrl-W   search\n\nnano is the right default when you just need to change a config file. It is installed nearly everywhere, and nothing about it is surprising.',
+  ex:['nano notes.txt','nano newfile.txt'],
+  run:(a)=>{
+    if(!a[0]) return ERR('Usage: nano [OPTIONS] [[+LINE[,COLUMN]] FILE]...');
+    return openEditor('nano', a[0]);
+  }
+});
+
+def('vim', {
+  cat:'write', desc:'edit a file in the modal editor you will meet on every server',
+  usage:'vim file',
+  man:'vim is MODAL: keystrokes mean different things depending on the mode, which is why it confuses everyone the first time. You start in NORMAL mode, where letters are commands rather than text.\n\n  i        enter INSERT mode — now you are typing text\n  Esc      back to NORMAL mode\n  o        open a new line below and start inserting\n  x        delete the character under the cursor\n\nCommands begin with a colon, typed from NORMAL mode:\n\n  :w       write (save)\n  :q       quit — refuses if you have unsaved changes\n  :wq      write and quit\n  :q!      quit and throw away changes\n\nThe famous problem of being unable to exit is exactly this: you are in INSERT mode, so :q is being typed into the file. Press Esc first, then :q! and Enter.\n\nLearn this much even if you prefer nano. vi is on every Unix machine ever made, including minimal containers and rescue shells where nano is not installed.',
+  ex:['vim notes.txt','vim config.conf'],
+  run:(a)=>{
+    if(!a[0]) return ERR('Usage: vim [file]');
+    return openEditor('vim', a[0]);
+  }
+});
+CMDS.vi = CMDS.vim;
+
+/* ==========================================================================
    5. Lessons
    ========================================================================== */
 
@@ -1892,6 +2140,34 @@ const MODULES = [
     { txt:'Copy <code>notes.txt</code> from documents to your home as <code>copy.txt</code>', hint:'cp documents/notes.txt copy.txt', check:()=>exists(HOME+'/copy.txt') },
     { txt:'Rename <code>copy.txt</code> to <code>renamed.txt</code>', hint:'mv copy.txt renamed.txt', check:()=>exists(HOME+'/renamed.txt') && !exists(HOME+'/copy.txt') },
     { txt:'Delete the <code>lab</code> directory and everything in it', hint:'rm -r lab', check:s=>s.lines.some(l=>/^rm\s+.*lab/.test(l)) && !exists(HOME+'/lab') }
+  ]
+},
+{
+  t:'Putting text in files', lead:'touch gives you an empty file. Three different things fill it, and knowing when to reach for each is most of the skill.',
+  blocks:[
+    {h:'The quickest way: redirection', p:[
+      'For one line, you do not need an editor at all. <code>&gt;</code> writes to a file and <code>&gt;&gt;</code> appends to it.',
+      'This is what scripts use, because it needs no interaction. It is also the fastest way to jot something down.'
+    ], demo:'<span class="p">$</span> <span class="c">echo "first line" &gt; story.txt</span>\n<span class="p">$</span> <span class="c">echo "second line" &gt;&gt; story.txt</span>\n<span class="p">$</span> <span class="c">cat story.txt</span>\nfirst line\nsecond line\n\n<span class="m"># careful: &gt; replaces everything. &gt;&gt; adds to the end.</span>'},
+    {h:'nano — the friendly editor', p:[
+      '<code>nano file.txt</code> opens the file and you just type. No modes, nothing to learn first. The shortcuts sit along the bottom of the screen, where <strong>^</strong> means Ctrl.',
+      '<code>Ctrl-O</code> writes the file out. <code>Ctrl-X</code> exits, and asks whether to save if you changed anything.'
+    ], demo:'<span class="p">$</span> <span class="c">nano notes.txt</span>\n\n<span class="m">  ^O  Write Out     ^X  Exit     ^K  Cut Line</span>\n<span class="m">  type freely — nano has no modes</span>'},
+    {h:'vim — the one on every server', p:[
+      'vim is <strong>modal</strong>. You start in NORMAL mode, where letters are commands, not text. Press <code>i</code> to enter INSERT mode and type; press <code>Esc</code> to go back.',
+      'Commands start with a colon, from NORMAL mode: <code>:w</code> writes, <code>:q</code> quits, <code>:wq</code> does both, <code>:q!</code> quits and discards.'
+    ], demo:'<span class="p">$</span> <span class="c">vim notes.txt</span>\n\n  <span class="m">i</span>        start typing\n  <span class="m">Esc</span>      stop typing, back to commands\n  <span class="m">:wq</span>      save and quit\n  <span class="m">:q!</span>      quit, throw changes away'},
+    {h:'Why bother with vim at all', p:[
+      'Because it is on every Unix machine ever made. Minimal containers, rescue shells, someone else\'s locked-down server — nano may not be installed, and <code>vi</code> always is.',
+      'You do not need to be good at it. You need to be able to open a file, change a line, and get out.'
+    ], tip:{b:'The famous trap', t:'Cannot exit vim? You are in INSERT mode, so ":q" is being typed into your file rather than run as a command. Press Esc first, then :q! and Enter.', warn:true}}
+  ],
+  tasks:[
+    { txt:'Write a line with redirection: <code>echo "hello" > story.txt</code>', hint:'echo "hello" > story.txt', check:()=>exists(HOME+'/story.txt') },
+    { txt:'Append a second line with <code>>></code>, then <code>cat</code> it', hint:'echo "second" >> story.txt', check:()=>{ const n=getNode(HOME+'/story.txt',true); return n && n.content.split('\n').filter(Boolean).length>=2; } },
+    { txt:'Open <code>story.txt</code> in <code>nano</code>, add a line, save with <strong>Ctrl-O</strong> and exit with <strong>Ctrl-X</strong>', hint:'nano story.txt', check:()=>{ const n=getNode(HOME+'/story.txt',true); return n && n.content.split('\n').filter(Boolean).length>=3; } },
+    { txt:'Create <code>vimtest.txt</code> with <code>vim</code> — press <code>i</code>, type something, <code>Esc</code>, then <code>:wq</code>', hint:'vim vimtest.txt', check:()=>{ const n=getNode(HOME+'/vimtest.txt',true); return n && n.content.trim().length>0; } },
+    { txt:'Read the manual: <code>man vim</code>', hint:'man vim', check:s=>s.lines.some(l=>/^man\s+vi/.test(l)) }
   ]
 },
 {
@@ -2071,7 +2347,12 @@ async function loadProgress(){
       track.lines = p.lines || [];
     }
   }catch(e){ doneTasks = {}; }
-  MODULES.forEach((m,i)=>{ if(!doneTasks[i]) doneTasks[i] = m.tasks.map(()=>false); });
+  // A saved entry whose length no longer matches means the modules changed
+  // underneath it (one was inserted or its tasks edited) — rebuild rather than
+  // trust a misaligned array.
+  MODULES.forEach((m,i)=>{
+    if(!doneTasks[i] || doneTasks[i].length !== m.tasks.length) doneTasks[i] = m.tasks.map(()=>false);
+  });
   renderRail(); renderLesson();
 }
 async function saveProgress(){
