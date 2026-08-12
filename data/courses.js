@@ -49,6 +49,20 @@ window.COURSES = [
     order: 100
   },
   {
+    slug: "linux-terminal",
+    href: "courses/linux-terminal/",
+    title: "Linux Terminal",
+    description: "A working shell in your browser — real filesystem, symlinks, permissions, pipes and 70+ commands, with every concept explained as you use it.",
+    tags: ["systems", "linux", "shell", "hands-on"],
+    level: "beginner",
+    duration: "~4 hours",
+    type: "simulator",
+    accent: "#C77DFF",
+    icon: "🐧",
+    status: "live",
+    order: 100
+  },
+  {
     slug: "rust-in-7-days",
     href: "courses/rust-in-7-days/",
     title: "Rust in 7 Days",
