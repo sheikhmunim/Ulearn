@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Packet Lab — two terminals, one network, and every way it breaks</title>
+
+<!-- course registry metadata — read by scripts/build-registry.mjs -->
+<meta name="course:title"       content="Packet Lab">
+<meta name="course:description" content="Two live terminals on a simulated network — run a listener on one host, connect from another, and watch the packet cross the wire or die trying.">
+<meta name="course:tags"        content="systems,networking,hands-on">
+<meta name="course:level"       content="intermediate">
+<meta name="course:duration"    content="~3 hours">
+<meta name="course:type"        content="simulator">
+<meta name="course:accent"      content="#2DD4BF">
+<meta name="course:icon"        content="🛰️">
+<meta name="course:status"      content="live">
+
+<script src="../../assets/progress.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:      #08100F;
+    --panel:   #0E1A18;
+    --panel-2: #142421;
+    --rail:    #0A1413;
+    --term:    #050C0B;
+    --border:  #1E332F;
+    --border-lit:#2C4A45;
+    --text:    #DCEAE7;
+    --muted:   #8AA5A0;
+    --faint:   #5A736F;
+
+    --accent:  #2DD4BF;
+    --accent-dim:#0F3B36;
+    --green:   #4ADE80;
+    --amber:   #FBBF24;
+    --red:     #F87171;
+    --blue:    #60A5FA;
+    --violet:  #C084FC;
+
+    --mono:'JetBrains Mono', ui-monospace, Consolas, monospace;
+    --sans:'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; height:100%; }
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--sans);
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;
+  }
+  ::selection{ background:var(--accent-dim); color:#fff; }
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    height:46px; flex-shrink:0; background:var(--rail);
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:13px; padding:0 15px;
+  }
+  .brand{ display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px; }
+  .topbar .sp{ flex:1; }
+  .pbar{ width:130px; height:4px; background:var(--border); border-radius:999px; overflow:hidden; }
+  .pbar i{ display:block; height:100%; width:0; background:var(--accent); transition:width .35s; }
+  .ptxt{ font-family:var(--mono); font-size:11px; color:var(--faint); }
+  .tbtn{
+    font-family:var(--mono); font-size:11px; color:var(--muted);
+    background:none; border:1px solid var(--border); border-radius:5px;
+    padding:5px 10px; cursor:pointer;
+  }
+  .tbtn:hover{ color:var(--text); border-color:var(--border-lit); }
+
+  .app{ flex:1; display:flex; min-height:0; }
+
+  /* ---------- rail ---------- */
+  .rail{
+    width:60px; flex-shrink:0; background:var(--rail);
+    border-right:1px solid var(--border); overflow-y:auto;
+    padding:10px 0; display:flex; flex-direction:column; gap:3px;
+  }
+  .mbtn{
+    background:none; border:0; border-left:2px solid transparent;
+    padding:9px 0; cursor:pointer; color:var(--faint);
+    font-family:var(--mono); font-size:12px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    transition:background .12s, color .12s;
+  }
+  .mbtn:hover{ background:var(--panel); color:var(--text); }
+  .mbtn.active{ background:var(--panel); color:var(--accent); border-left-color:var(--accent); }
+  .mbtn .dot{ width:6px; height:6px; border-radius:50%; background:var(--border-lit); }
+  .mbtn.done .dot{ background:var(--green); }
+
+  /* ---------- lesson ---------- */
+  .lesson{
+    width:390px; flex-shrink:0; overflow-y:auto;
+    border-right:1px solid var(--border); padding:22px 22px 60px;
+  }
+  .eyebrow{
+    font-family:var(--mono); font-size:10px; letter-spacing:.15em;
+    text-transform:uppercase; color:var(--accent); margin-bottom:7px;
+  }
+  .lesson h1{ font-size:20px; line-height:1.25; margin:0 0 9px; }
+  .lesson .lead{ font-size:13.5px; line-height:1.65; color:var(--muted); margin:0 0 20px; }
+  .lesson h2{ font-size:13px; margin:22px 0 8px; font-weight:600; display:flex; gap:7px; align-items:baseline; }
+  .lesson h2 .ix{ font-family:var(--mono); font-size:10px; color:var(--faint); }
+  .lesson p{ font-size:13.2px; line-height:1.72; color:#C2D4D0; margin:0 0 11px; }
+  .lesson strong{ color:var(--text); font-weight:600; }
+  code{
+    font-family:var(--mono); font-size:11.6px;
+    background:var(--panel-2); border:1px solid var(--border);
+    border-radius:4px; padding:1px 5px; color:var(--accent);
+  }
+  .demo{
+    background:var(--term); border:1px solid var(--border); border-radius:6px;
+    padding:10px 12px; margin:0 0 12px;
+    font-family:var(--mono); font-size:11.4px; line-height:1.75;
+    white-space:pre-wrap; overflow-x:auto; color:#A9BEBA;
+  }
+  .demo .h{ color:var(--accent); }
+  .demo .m{ color:var(--faint); }
+  .demo .g{ color:var(--green); }
+  .demo .r{ color:var(--red); }
+  .tip{
+    border-left:2px solid var(--amber); background:rgba(251,191,36,.055);
+    padding:10px 13px; margin:0 0 12px; font-size:12.9px; line-height:1.65; color:#C2D4D0;
+  }
+  .tip b{ color:var(--amber); }
+  .tip.key{ border-left-color:var(--accent); background:rgba(45,212,191,.06); }
+  .tip.key b{ color:var(--accent); }
+
+  .tasks{ margin-top:22px; border:1px solid var(--border); border-radius:7px; background:var(--panel); overflow:hidden; }
+  .tasks-h{
+    padding:9px 13px; border-bottom:1px solid var(--border);
+    font-family:var(--mono); font-size:10px; letter-spacing:.13em;
+    text-transform:uppercase; color:var(--muted);
+  }
+  .task{ display:flex; gap:9px; padding:10px 13px; border-top:1px solid var(--border); font-size:12.8px; line-height:1.6; }
+  .task:first-of-type{ border-top:0; }
+  .task .box{
+    width:14px; height:14px; flex-shrink:0; margin-top:2px;
+    border:1.5px solid var(--border-lit); border-radius:4px;
+    display:grid; place-items:center; font-size:9px; color:transparent;
+  }
+  .task.done .box{ background:var(--green); border-color:var(--green); color:#062B12; }
+  .task.done .txt{ color:var(--faint); text-decoration:line-through; }
+  .task .txt{ color:#C2D4D0; }
+  .task .hint{ font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-top:4px; display:block; }
+
+  .navrow{ display:flex; gap:8px; margin-top:20px; }
+  .btn{
+    font-family:var(--sans); font-size:12.5px; font-weight:600;
+    padding:7px 13px; border-radius:6px; cursor:pointer;
+    border:1px solid var(--border-lit); background:var(--panel-2); color:var(--text);
+  }
+  .btn:hover:not(:disabled){ background:#1A2E2A; }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .navrow .sp{ flex:1; }
+
+  /* ---------- right column ---------- */
+  .right{ flex:1; min-width:0; display:flex; flex-direction:column; }
+
+  .topo{
+    height:190px; flex-shrink:0; background:var(--panel);
+    border-bottom:1px solid var(--border); position:relative; overflow:hidden;
+  }
+  .topo svg{ width:100%; height:100%; display:block; }
+  .topo .lbl{ font-family:var(--mono); font-size:9.5px; fill:var(--faint); }
+  .topo .name{ font-family:var(--mono); font-size:11px; fill:var(--text); font-weight:500; }
+  .topo .ip{ font-family:var(--mono); font-size:9px; fill:var(--accent); }
+  .topo .box{ fill:var(--panel-2); stroke:var(--border-lit); stroke-width:1; }
+  .topo .box.down{ stroke:var(--red); stroke-dasharray:3 3; }
+  .topo .box.act{ stroke:var(--accent); stroke-width:1.6; }
+  .topo .wire{ stroke:var(--border-lit); stroke-width:1.4; }
+  .topo .subnet{ font-family:var(--mono); font-size:9px; fill:var(--faint); }
+  .pkt{ r:4.5; }
+
+  .terms{ flex:1; display:flex; flex-direction:column; min-height:0; }
+  .pane{ flex:1; display:flex; flex-direction:column; min-height:0; border-top:1px solid var(--border); }
+  .pane:first-child{ border-top:0; }
+  .pane-bar{
+    height:30px; flex-shrink:0; background:var(--panel);
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:9px; padding:0 11px;
+    font-family:var(--mono); font-size:11px; color:var(--faint);
+  }
+  .pane-bar select{
+    font-family:var(--mono); font-size:11px;
+    background:var(--panel-2); color:var(--accent);
+    border:1px solid var(--border); border-radius:4px; padding:2px 5px; cursor:pointer;
+  }
+  .pane-bar .sp{ flex:1; }
+  .pane-bar .ipn{ color:var(--muted); }
+  .scr{
+    flex:1; overflow-y:auto; padding:10px 13px 3px; background:var(--term);
+    font-family:var(--mono); font-size:12.2px; line-height:1.58;
+    white-space:pre-wrap; word-break:break-word; color:#BCCFCB;
+  }
+  .iline{
+    display:flex; padding:1px 13px 11px; background:var(--term);
+    font-family:var(--mono); font-size:12.2px; line-height:1.58; flex-shrink:0;
+  }
+  .iline .ps{ color:var(--green); white-space:pre; flex-shrink:0; }
+  .iline input{
+    flex:1; background:transparent; border:0; outline:0;
+    font-family:var(--mono); font-size:12.2px; line-height:1.58;
+    color:var(--text); padding:0; min-width:0; caret-color:var(--accent);
+  }
+  .scr .p{ color:var(--green); }
+  .scr .c{ color:var(--text); }
+  .scr .e{ color:var(--red); }
+  .scr .ok{ color:var(--green); }
+  .scr .w{ color:var(--amber); }
+  .scr .d{ color:var(--faint); }
+  .scr .a{ color:var(--accent); }
+  .scr .b{ color:var(--blue); }
+
+  .toast{
+    position:fixed; right:16px; bottom:16px; z-index:200;
+    background:var(--panel); border:1px solid var(--green); border-left-width:3px;
+    border-radius:6px; padding:10px 14px; font-size:12.5px; max-width:300px;
+    box-shadow:0 6px 24px rgba(0,0,0,.55);
+    opacity:0; transform:translateY(8px); pointer-events:none; transition:opacity .22s, transform .22s;
+  }
+  .toast.show{ opacity:1; transform:none; }
+  .toast b{ color:var(--green); }
+
+  @media (max-width:1150px){ .lesson{ width:330px; } }
+  @media (max-width:900px){
+    body{ overflow:auto; height:auto; }
+    .app{ flex-direction:column; }
+    .rail{ width:100%; flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid var(--border); }
+    .mbtn{ border-left:0; border-bottom:2px solid transparent; padding:8px 12px; }
+    .mbtn.active{ border-left:0; border-bottom-color:var(--accent); }
+    .lesson{ width:100%; border-right:0; border-bottom:1px solid var(--border); }
+    .right{ height:88vh; }
+  }
+  @media (prefers-reduced-motion:reduce){ *{ transition:none !important; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="brand">🛰️ Packet Lab</span>
+  <span class="sp"></span>
+  <button class="tbtn" id="resetNet">reset network</button>
+  <span class="pbar"><i id="pfill"></i></span>
+  <span class="ptxt" id="ptxt">0 / 8</span>
+</div>
+
+<div class="app">
+  <nav class="rail" id="rail"></nav>
+  <div class="lesson" id="lesson"></div>
+
+  <div class="right">
+    <div class="topo" id="topo"></div>
+    <div class="terms">
+      <div class="pane" id="paneA"></div>
+      <div class="pane" id="paneB"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ==========================================================================
+   1. Network model
+   ========================================================================== */
+
+let NET;
+
+function seedNet(){
+  NET = {
+    hosts: {
+      client: {
+        name:'client', kind:'host', subnet:'a',
+        ifaces:{ eth0:{ ip:'10.0.1.10', prefix:24, up:true, mac:'02:1a:00:00:01:0a' } },
+        routes:[{ dst:'default', via:'10.0.1.1', dev:'eth0' }],
+        listeners:{}, firewall:{ policyIn:'allow', rules:[] },
+        resolver:'10.0.1.53', hosts:{ 'localhost':'127.0.0.1' }, forwarding:false
+      },
+      dns: {
+        name:'dns', kind:'host', subnet:'a',
+        ifaces:{ eth0:{ ip:'10.0.1.53', prefix:24, up:true, mac:'02:1a:00:00:01:35' } },
+        routes:[{ dst:'default', via:'10.0.1.1', dev:'eth0' }],
+        listeners:{ 53:{ proto:'udp', app:'named' } },
+        firewall:{ policyIn:'allow', rules:[] },
+        resolver:'127.0.0.1', hosts:{}, forwarding:false
+      },
+      router: {
+        name:'router', kind:'router', subnet:'both',
+        ifaces:{
+          eth0:{ ip:'10.0.1.1', prefix:24, up:true, mac:'02:1a:00:00:01:01' },
+          eth1:{ ip:'10.0.2.1', prefix:24, up:true, mac:'02:1a:00:00:02:01' }
+        },
+        routes:[], listeners:{ 22:{ proto:'tcp', app:'sshd' } },
+        firewall:{ policyIn:'allow', rules:[] },
+        resolver:'10.0.1.53', hosts:{}, forwarding:true
+      },
+      server: {
+        name:'server', kind:'host', subnet:'b',
+        ifaces:{ eth0:{ ip:'10.0.2.20', prefix:24, up:true, mac:'02:1a:00:00:02:14' } },
+        routes:[{ dst:'default', via:'10.0.2.1', dev:'eth0' }],
+        listeners:{ 22:{ proto:'tcp', app:'sshd' } },
+        firewall:{ policyIn:'allow', rules:[] },
+        resolver:'10.0.1.53', hosts:{}, forwarding:false
+      },
+      laptop: {
+        // deliberately unconfigured — module 6 is about bringing it online
+        name:'laptop', kind:'host', subnet:'b',
+        ifaces:{ eth0:{ ip:null, prefix:null, up:false, mac:'02:1a:00:00:02:63' } },
+        routes:[], listeners:{}, firewall:{ policyIn:'allow', rules:[] },
+        resolver:'10.0.1.53', hosts:{}, forwarding:false
+      }
+    },
+    zone: {
+      'api.example.com':'10.0.2.20',
+      'www.example.com':'10.0.2.20',
+      'router.local':'10.0.1.1',
+      'ghost.example.com':'10.0.2.99'   // resolves, but nothing is there
+    }
+  };
+}
+
+/* ---------- addressing ---------- */
+
+function ipToInt(ip){
+  const p = String(ip).split('.').map(Number);
+  if(p.length !== 4 || p.some(n => !(n>=0 && n<=255))) return null;
+  return ((p[0]<<24)>>>0) + (p[1]<<16) + (p[2]<<8) + p[3];
+}
+function sameSubnet(a, b, prefix){
+  const A = ipToInt(a), B = ipToInt(b);
+  if(A === null || B === null) return false;
+  const mask = prefix === 0 ? 0 : (0xFFFFFFFF << (32-prefix)) >>> 0;
+  return ((A & mask) >>> 0) === ((B & mask) >>> 0);
+}
+function networkOf(ip, prefix){
+  const A = ipToInt(ip);
+  const mask = (0xFFFFFFFF << (32-prefix)) >>> 0;
+  const n = (A & mask) >>> 0;
+  return [(n>>>24)&255, (n>>>16)&255, (n>>>8)&255, n&255].join('.') + '/' + prefix;
+}
+function hostByIP(ip){
+  for(const h of Object.values(NET.hosts))
+    for(const i of Object.values(h.ifaces))
+      if(i.ip === ip && i.up) return h;
+  return null;
+}
+function upIfaces(h){ return Object.entries(h.ifaces).filter(([,i]) => i.up && i.ip); }
+
+/* ---------- the delivery engine ---------- */
+
+/**
+ * Try to move a packet from `src` to `dstIP`.
+ * Returns { ok, path:[hostnames], status, detail }
+ *
+ * status is the thing the whole course turns on:
+ *   'delivered'  something answered
+ *   'refused'    reached the host, nothing listening  -> RST
+ *   'timeout'    silently dropped: firewall, or nobody at that address
+ *   'unreach'    the sending host has no route at all
+ */
+function deliver(src, dstIP, port, proto){
+  const path = [src.name];
+  const ifs = upIfaces(src);
+  if(!ifs.length) return { ok:false, path, status:'unreach', detail:'no interface is up' };
+
+  // loopback / self
+  if(dstIP === '127.0.0.1' || ifs.some(([,i]) => i.ip === dstIP)){
+    return checkPort(src, path, port, proto, true);
+  }
+
+  // 1. connected subnet?
+  let egress = ifs.find(([,i]) => sameSubnet(i.ip, dstIP, i.prefix));
+  let nextIP = dstIP, viaGw = false;
+
+  // 2. otherwise consult the routing table
+  if(!egress){
+    const def = src.routes.find(r => r.dst === 'default');
+    const spec = src.routes.find(r => r.dst !== 'default' && r.prefix != null && sameSubnet(r.dst, dstIP, r.prefix));
+    const use = spec || def;
+    if(!use) return { ok:false, path, status:'unreach', detail:'no route to host' };
+    nextIP = use.via; viaGw = true;
+    egress = ifs.find(([n]) => n === use.dev) || ifs.find(([,i]) => sameSubnet(i.ip, use.via, i.prefix));
+    if(!egress) return { ok:false, path, status:'unreach', detail:`gateway ${use.via} is not on any connected subnet` };
+    if(!sameSubnet(egress[1].ip, use.via, egress[1].prefix))
+      return { ok:false, path, status:'unreach', detail:`gateway ${use.via} is unreachable from ${egress[1].ip}` };
+  }
+
+  // 3. who is at the next hop?
+  const next = hostByIP(nextIP);
+  if(!next) return { ok:false, path, status:'timeout', detail:`nothing answered at ${nextIP}` };
+
+  if(!viaGw) { path.push(next.name); return checkFwThenPort(next, path, port, proto, src); }
+
+  // 4. through the router
+  path.push(next.name);
+  if(!next.forwarding)
+    return { ok:false, path, status:'timeout', detail:`${next.name} is not forwarding packets` };
+  const fw = firewallVerdict(next, port, proto);
+  if(fw !== 'allow')
+    return { ok:false, path, status: fw === 'reject' ? 'refused' : 'timeout', detail:`blocked by ${next.name} firewall` };
+
+  const onward = upIfaces(next).find(([,i]) => sameSubnet(i.ip, dstIP, i.prefix));
+  if(!onward) return { ok:false, path, status:'unreach', detail:`${next.name} has no route to ${dstIP}` };
+
+  const dest = hostByIP(dstIP);
+  if(!dest) return { ok:false, path, status:'timeout', detail:`nothing answered at ${dstIP}` };
+  path.push(dest.name);
+  return checkFwThenPort(dest, path, port, proto, src);
+}
+
+function firewallVerdict(h, port, proto){
+  if(port == null) {
+    const icmp = h.firewall.rules.find(r => r.proto === 'icmp');
+    return icmp ? icmp.action : h.firewall.policyIn === 'deny' ? 'deny' : 'allow';
+  }
+  const rule = h.firewall.rules.find(r => r.port === port && (!r.proto || r.proto === proto || r.proto === 'tcp'));
+  if(rule) return rule.action;
+  return h.firewall.policyIn === 'deny' ? 'deny' : 'allow';
+}
+
+function checkFwThenPort(h, path, port, proto){
+  const v = firewallVerdict(h, port, proto);
+  if(v === 'deny')   return { ok:false, path, status:'timeout', detail:`dropped by ${h.name} firewall` };
+  if(v === 'reject') return { ok:false, path, status:'refused', detail:`rejected by ${h.name} firewall` };
+  return checkPort(h, path, port, proto);
+}
+
+function checkPort(h, path, port, proto){
+  if(port == null) return { ok:true, path, status:'delivered', detail:'icmp echo reply' };
+  const l = h.listeners[port];
+  if(!l) return { ok:false, path, status:'refused', detail:`nothing is listening on port ${port}` };
+  return { ok:true, path, status:'delivered', detail:l.app, app:l };
+}
+
+/** Resolve a name using /etc/hosts, then the configured resolver. */
+function resolve(host, name){
+  if(ipToInt(name)) return { ip:name, how:'literal' };
+  if(host.hosts[name]) return { ip:host.hosts[name], how:'/etc/hosts' };
+  if(!host.resolver) return { err:'no resolver configured' };
+  if(host.resolver === '127.0.0.1' && host.name === 'dns'){
+    return NET.zone[name] ? { ip:NET.zone[name], how:'local zone' } : { err:'NXDOMAIN' };
+  }
+  const r = deliver(host, host.resolver, 53, 'udp');
+  if(!r.ok) return { err:`resolver ${host.resolver} unreachable (${r.status})`, net:r };
+  return NET.zone[name] ? { ip:NET.zone[name], how:'dns ' + host.resolver } : { err:'NXDOMAIN' };
+}
+
+/* ==========================================================================
+   2. Commands
+   ========================================================================== */
+
+const OK  = o => ({ out: o == null ? '' : o });
+const BAD = e => ({ out:'', err:e });
+
+const C = {};
+function def(n, s){ C[n] = s; }
+
+def('help', {
+  desc:'list every command', usage:'help',
+  man:'Lists the commands available on this host. Use man <command> for detail.',
+  run:()=>{
+    const groups = {
+      iface:'Interfaces & addressing', route:'Routing', diag:'Reachability',
+      sock:'Sockets & services', name:'Name resolution', fw:'Firewall', misc:'Other'
+    };
+    let s = '<span class="a">Commands on this host</span>\n<span class="d">man &lt;command&gt; for detail. Each terminal is a different machine — check the selector above.</span>\n';
+    for(const [k,label] of Object.entries(groups)){
+      const ns = Object.keys(C).filter(n=>C[n].cat===k).sort();
+      if(!ns.length) continue;
+      s += `\n<span class="ok">${label}</span>\n`;
+      for(const n of ns) s += `  ${n.padEnd(12)}<span class="d">${C[n].desc}</span>\n`;
+    }
+    return OK(s);
+  }
+});
+
+def('man', {
+  cat:'misc', desc:'read the manual for a command', usage:'man command',
+  man:'Shows the manual entry for a command, including what its output actually means.',
+  run:(a)=>{
+    const c = C[a[0]];
+    if(!a[0]) return BAD('What manual page do you want?');
+    if(!c) return BAD(`No manual entry for ${a[0]}`);
+    let s = `<span class="w">NAME</span>\n       ${a[0]} — ${c.desc}\n\n<span class="w">SYNOPSIS</span>\n       ${esc(c.usage)}\n\n<span class="w">DESCRIPTION</span>\n`;
+    s += c.man.split('\n').map(l=>'       '+esc(l)).join('\n');
+    if(c.ex) s += `\n\n<span class="w">EXAMPLES</span>\n` + c.ex.map(e=>`       <span class="ok">$</span> ${esc(e)}`).join('\n');
+    return OK(s+'\n');
+  }
+});
+
+def('ip', {
+  cat:'iface', desc:'show and configure addresses, links and routes',
+  usage:'ip addr | ip route | ip link set dev X up|down | ip addr add IP/PREFIX dev X | ip route add default via GW',
+  man:'The modern tool for everything address- and route-related. It replaced ifconfig and route, which still exist but are frozen.\n\n  ip addr                       show interfaces and their addresses\n  ip route                      show the routing table\n  ip link set dev eth0 up       bring an interface up\n  ip addr add 10.0.2.63/24 dev eth0\n  ip route add default via 10.0.2.1\n\nAn interface with no address, or one that is DOWN, cannot send anything — and that is the first thing to check when nothing works.',
+  ex:['ip addr','ip route','ip link set dev eth0 up','ip addr add 10.0.2.63/24 dev eth0','ip route add default via 10.0.2.1'],
+  run:(a,h)=>{
+    const sub = a[0] || '';
+    if(/^a(ddr)?$/.test(sub) && !a[1]){
+      let s = '';
+      let i = 1;
+      s += `${i}: lo: &lt;LOOPBACK,UP&gt; mtu 65536\n    inet 127.0.0.1/8 scope host lo\n`;
+      for(const [n,f] of Object.entries(h.ifaces)){
+        i++;
+        s += `${i}: ${n}: &lt;BROADCAST,MULTICAST${f.up?',UP,LOWER_UP':''}&gt; mtu 1500 state <span class="${f.up?'ok':'e'}">${f.up?'UP':'DOWN'}</span>\n`;
+        s += `    link/ether ${f.mac}\n`;
+        if(f.ip) s += `    inet <span class="a">${f.ip}/${f.prefix}</span> brd + scope global ${n}\n`;
+        else s += `    <span class="d">(no address assigned)</span>\n`;
+      }
+      return OK(s);
+    }
+    if(/^r(oute)?$/.test(sub) && !a[1]){
+      if(!h.routes.length && !upIfaces(h).length) return OK('<span class="d">(routing table is empty)</span>\n');
+      let s = '';
+      for(const r of h.routes)
+        s += r.dst === 'default'
+          ? `default via <span class="a">${r.via}</span> dev ${r.dev}\n`
+          : `${r.dst}/${r.prefix} via ${r.via} dev ${r.dev}\n`;
+      for(const [n,f] of upIfaces(h))
+        s += `${networkOf(f.ip,f.prefix)} dev ${n} proto kernel scope link src ${f.ip}\n`;
+      return OK(s);
+    }
+    if(/^l(ink)?$/.test(sub) && a[1] === 'set'){
+      const dev = a[a.indexOf('dev')+1] || a[2];
+      const want = a.includes('up') ? true : a.includes('down') ? false : null;
+      const f = h.ifaces[dev];
+      if(!f) return BAD(`Cannot find device "${dev}"`);
+      if(want === null) return BAD('ip: expected up or down');
+      f.up = want; drawTopo();
+      return OK('');
+    }
+    if(/^a(ddr)?$/.test(sub) && (a[1] === 'add' || a[1] === 'del')){
+      const spec = a[2] || '';
+      const dev = a[a.indexOf('dev')+1];
+      const f = h.ifaces[dev];
+      if(!f) return BAD(`Cannot find device "${dev}"`);
+      if(a[1] === 'del'){ f.ip = null; f.prefix = null; drawTopo(); return OK(''); }
+      const m = spec.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
+      if(!m) return BAD(`Error: any valid prefix is expected rather than "${spec}".`);
+      if(ipToInt(m[1]) === null) return BAD(`Error: invalid address "${m[1]}".`);
+      f.ip = m[1]; f.prefix = parseInt(m[2],10); drawTopo();
+      return OK('');
+    }
+    if(/^r(oute)?$/.test(sub) && (a[1] === 'add' || a[1] === 'del')){
+      const via = a[a.indexOf('via')+1];
+      if(a[2] === 'default'){
+        if(a[1] === 'del'){ h.routes = h.routes.filter(r=>r.dst!=='default'); return OK(''); }
+        if(!via) return BAD('Error: an inet address is expected rather than "".');
+        const dev = a.includes('dev') ? a[a.indexOf('dev')+1] : (upIfaces(h).find(([,f])=>sameSubnet(f.ip,via,f.prefix))||[])[0];
+        if(!dev) return BAD(`Error: Nexthop has invalid gateway.`);
+        h.routes = h.routes.filter(r=>r.dst!=='default');
+        h.routes.push({ dst:'default', via, dev });
+        return OK('');
+      }
+      const m = (a[2]||'').match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
+      if(!m) return BAD('Error: an inet prefix is expected.');
+      h.routes.push({ dst:m[1], prefix:parseInt(m[2],10), via, dev: a.includes('dev')?a[a.indexOf('dev')+1]:'eth0' });
+      return OK('');
+    }
+    return BAD('Usage: ip [ addr | route | link ] ...');
+  }
+});
+
+def('ifconfig', {
+  cat:'iface', desc:'legacy way to show interfaces',
+  usage:'ifconfig',
+  man:'The old tool. Still on many systems, and still in every old tutorial, but frozen — it cannot show everything modern kernels do. Use ip addr instead; this is here so you recognise it.',
+  ex:['ifconfig'],
+  run:(a,h)=>{
+    let s = '';
+    for(const [n,f] of Object.entries(h.ifaces)){
+      s += `${n}: flags=${f.up?'4163<UP,BROADCAST,RUNNING,MULTICAST>':'4098<BROADCAST,MULTICAST>'}  mtu 1500\n`;
+      if(f.ip) s += `        inet ${f.ip}  netmask ${maskOf(f.prefix)}\n`;
+      s += `        ether ${f.mac}\n\n`;
+    }
+    return OK(s + '<span class="d">(deprecated — prefer `ip addr`)</span>\n');
+  }
+});
+function maskOf(p){ const m=(0xFFFFFFFF<<(32-p))>>>0; return [(m>>>24)&255,(m>>>16)&255,(m>>>8)&255,m&255].join('.'); }
+
+def('hostname', { cat:'misc', desc:'print this machine\'s name', usage:'hostname',
+  man:'Prints the hostname. Useful when you have several terminals open and have lost track of which machine you are typing into — which happens constantly.',
+  ex:['hostname'], run:(a,h)=>OK(h.name+'\n') });
+
+def('ping', {
+  cat:'diag', desc:'test whether a host answers at all',
+  usage:'ping HOST',
+  man:'Sends ICMP echo requests and waits for replies. It answers exactly one question: can packets get there and back?\n\nWhat the failures mean:\n  "Destination Host Unreachable" — no route, or nothing at that address on our subnet\n  "Network is unreachable"       — this host has no route to that network at all\n  100% packet loss, no error     — something is silently dropping them. Usually a firewall.\n\nping proving a host is up does NOT mean the service on it works. Ports are a separate question — use nc or curl for that.',
+  ex:['ping 10.0.2.20','ping api.example.com','ping 10.0.1.1'],
+  run:(a,h)=>{
+    if(!a[0]) return BAD('ping: usage error: Destination address required');
+    const r = resolve(h, a[0]);
+    if(r.err) return BAD(`ping: ${a[0]}: Name or service not known`);
+    const d = deliver(h, r.ip, null, 'icmp');
+    animate(d.path, d.ok);
+    let s = `PING ${a[0]} (${r.ip}) 56(84) bytes of data.\n`;
+    if(d.ok){
+      for(let i=1;i<=3;i++) s += `64 bytes from ${r.ip}: icmp_seq=${i} ttl=${64-(d.path.length-2)} time=${(0.4+i*0.1).toFixed(1)} ms\n`;
+      s += `\n--- ${a[0]} ping statistics ---\n3 packets transmitted, 3 received, <span class="ok">0% packet loss</span>\n`;
+    } else if(d.status === 'unreach'){
+      s += `<span class="e">connect: Network is unreachable</span>\n<span class="d">(${d.detail})</span>\n`;
+    } else {
+      s += `<span class="d">(no replies)</span>\n\n--- ${a[0]} ping statistics ---\n3 packets transmitted, 0 received, <span class="e">100% packet loss</span>\n<span class="d">(${d.detail})</span>\n`;
+    }
+    return OK(s);
+  }
+});
+
+def('traceroute', {
+  cat:'diag', desc:'show every hop along the way',
+  usage:'traceroute HOST',
+  man:'Reveals the path a packet takes, one router at a time. When something is unreachable, the last hop that answers tells you how far you got — which is usually enough to know whose problem it is.',
+  ex:['traceroute 10.0.2.20','traceroute api.example.com'],
+  run:(a,h)=>{
+    const r = resolve(h, a[0]||'');
+    if(r.err) return BAD(`traceroute: unknown host ${a[0]}`);
+    const d = deliver(h, r.ip, null, 'icmp');
+    animate(d.path, d.ok);
+    let s = `traceroute to ${a[0]} (${r.ip}), 30 hops max\n`;
+    const hops = d.path.slice(1);
+    hops.forEach((n,i)=>{
+      const host = NET.hosts[n];
+      const ip = upIfaces(host)[0] ? upIfaces(host)[0][1].ip : '*';
+      s += ` ${i+1}  ${n} (${ip})  ${(0.3+i*0.4).toFixed(3)} ms\n`;
+    });
+    if(!d.ok) s += ` ${hops.length+1}  <span class="e">* * *</span>  <span class="d">${d.detail}</span>\n`;
+    return OK(s);
+  }
+});
+
+def('ss', {
+  cat:'sock', desc:'show listening sockets and connections',
+  usage:'ss -tlnp',
+  man:'Shows sockets. The combination you will type forever is:\n\n  ss -tlnp    t=tcp  l=listening  n=numeric ports  p=which process\n\nThis answers "is my service actually listening, and on which address?" — and the address matters enormously. A service bound to 127.0.0.1 is reachable only from the machine itself; one bound to 0.0.0.0 accepts from anywhere. Half of all "works locally, not remotely" bugs are exactly this.',
+  ex:['ss -tlnp','ss -tln'],
+  run:(a,h)=>{
+    const ls = Object.entries(h.listeners);
+    let s = 'State    Recv-Q  Send-Q   Local Address:Port    Process\n';
+    if(!ls.length) return OK(s + '<span class="d">(nothing is listening)</span>\n');
+    for(const [p,l] of ls)
+      s += `LISTEN   0       128      ${(l.bind||'0.0.0.0')}:${String(p).padEnd(8)} <span class="a">users:(("${l.app}"))</span>\n`;
+    return OK(s);
+  }
+});
+def('netstat', Object.assign({}, C.ss, { desc:'legacy socket listing', man:'The older equivalent of ss. netstat -tlnp does the same job. ss is faster and is what modern systems ship.' }));
+
+def('serve', {
+  cat:'sock', desc:'start a service listening on a port',
+  usage:'serve PORT [name]',
+  man:'Starts a listener on this host — the simulator\'s stand-in for running a web server, database, or anything else that accepts connections.\n\n  serve 8080          listen on 8080\n  serve 80 nginx      give it a name\n\nA port with nothing listening is what produces "connection refused". Starting a listener here is what makes the difference visible.',
+  ex:['serve 8080','serve 80 nginx'],
+  run:(a,h)=>{
+    const p = parseInt(a[0],10);
+    if(!p) return BAD('serve: usage: serve PORT [name]');
+    if(h.listeners[p]) return BAD(`serve: port ${p} is already in use`);
+    h.listeners[p] = { proto:'tcp', app:a[1]||'server', bind:a[2]||'0.0.0.0' };
+    return OK(`<span class="ok">Listening on 0.0.0.0:${p}</span>  <span class="d">(${a[1]||'server'})</span>\n`);
+  }
+});
+
+def('stop', {
+  cat:'sock', desc:'stop a listener',
+  usage:'stop PORT',
+  man:'Stops the service listening on a port. Useful for demonstrating what "connection refused" really means: the host is perfectly healthy, there is simply nothing accepting on that port.',
+  ex:['stop 8080'],
+  run:(a,h)=>{
+    const p = parseInt(a[0],10);
+    if(!h.listeners[p]) return BAD(`stop: nothing is listening on ${p}`);
+    delete h.listeners[p];
+    return OK(`stopped listener on ${p}\n`);
+  }
+});
+
+def('nc', {
+  cat:'sock', desc:'open or test a TCP connection',
+  usage:'nc [-z] [-v] HOST PORT   |   nc -l PORT',
+  man:'Netcat: raw TCP in a single command, and the fastest way to answer "can I reach that port?"\n\n  nc -zv host 8080    just test the port and report (z = scan, v = verbose)\n  nc -l 8080          listen on a port\n\nThe two failures are the whole point:\n\n  Connection refused   — you REACHED the host. Nothing is listening. Routing and\n                         firewall are fine; the service is down or on another port.\n  Connection timed out — nothing answered at all. A firewall dropped it, the route\n                         is wrong, or the host is not there.\n\nRefused is good news. It proves the path works.',
+  ex:['nc -zv 10.0.2.20 8080','nc -zv api.example.com 80','nc -l 9000'],
+  run:(a,h)=>{
+    if(a[0] === '-l' || (a.includes('-l'))){
+      const p = parseInt(a[a.indexOf('-l')+1],10);
+      if(!p) return BAD('nc: missing port number');
+      if(h.listeners[p]) return BAD(`nc: Address already in use`);
+      h.listeners[p] = { proto:'tcp', app:'nc' };
+      return OK(`<span class="ok">Listening on 0.0.0.0 ${p}</span>\n`);
+    }
+    const args = a.filter(x=>!x.startsWith('-'));
+    if(args.length < 2) return BAD('nc: usage: nc [-zv] hostname port');
+    const r = resolve(h, args[0]);
+    if(r.err) return BAD(`nc: getaddrinfo for host "${args[0]}" port ${args[1]}: ${r.err}`);
+    const port = parseInt(args[1],10);
+    const d = deliver(h, r.ip, port, 'tcp');
+    animate(d.path, d.ok);
+    if(d.ok)                    return OK(`<span class="ok">Connection to ${args[0]} ${port} port [tcp/*] succeeded!</span>\n<span class="d">(${d.detail} is listening)</span>\n`);
+    if(d.status === 'refused')  return BAD(`nc: connect to ${args[0]} port ${port} (tcp) failed: Connection refused\n<span class="d">(${d.detail} — you reached the host, so the path is fine)</span>`);
+    if(d.status === 'unreach')  return BAD(`nc: connect to ${args[0]} port ${port} (tcp) failed: Network is unreachable\n<span class="d">(${d.detail})</span>`);
+    return BAD(`nc: connect to ${args[0]} port ${port} (tcp) failed: Connection timed out\n<span class="d">(${d.detail} — nothing answered, so it never got there)</span>`);
+  }
+});
+
+def('curl', {
+  cat:'sock', desc:'make an HTTP request',
+  usage:'curl [-v] URL',
+  man:'Fetches a URL. With -v it narrates every stage, which turns it into the best diagnostic tool you have:\n\n  1. resolve the name to an address\n  2. open a TCP connection to the port\n  3. send the request and read the reply\n\nEach stage fails differently, and -v tells you which one you are stuck on. "Could not resolve host" is DNS. "Connection refused" is TCP. A 502 is HTTP — you connected fine and the server itself is unhappy.',
+  ex:['curl http://api.example.com','curl -v http://10.0.2.20:8080','curl http://10.0.2.20:8080'],
+  run:(a,h,f)=>{
+    const url = a.find(x=>!x.startsWith('-'));
+    if(!url) return BAD('curl: try \'curl --help\' for more information');
+    const m = url.match(/^(?:(https?):\/\/)?([^:/]+)(?::(\d+))?(\/.*)?$/);
+    if(!m) return BAD(`curl: (3) URL using bad/illegal format`);
+    const scheme = m[1]||'http', host = m[2], port = parseInt(m[3]||(scheme==='https'?443:80),10), path = m[4]||'/';
+    let s = '';
+    const v = f.v;
+    const r = resolve(h, host);
+    if(r.err){
+      if(v) s += `<span class="d">* Host ${host}:${port} was resolved.</span>\n`;
+      return BAD(s + `curl: (6) Could not resolve host: ${host}\n<span class="d">(${r.err} — this is a DNS problem, not a connectivity one)</span>`);
+    }
+    if(v) s += `<span class="d">* Host ${host}:${port} was resolved.\n* Trying ${r.ip}:${port}...</span>\n`;
+    const d = deliver(h, r.ip, port, 'tcp');
+    animate(d.path, d.ok);
+    if(!d.ok){
+      const why = d.status==='refused' ? 'Connection refused'
+                : d.status==='unreach' ? 'Network is unreachable' : 'Connection timed out';
+      const code = d.status==='refused' ? 7 : 28;
+      return BAD(s + `curl: (${code}) Failed to connect to ${host} port ${port} after 0 ms: ${why}\n<span class="d">(${d.detail})</span>`);
+    }
+    if(v) s += `<span class="d">* Connected to ${host} (${r.ip}) port ${port}\n&gt; GET ${path} HTTP/1.1\n&gt; Host: ${host}\n&gt;\n&lt; HTTP/1.1 200 OK\n&lt; content-type: text/html\n&lt;</span>\n`;
+    s += `<span class="ok">HTTP/1.1 200 OK</span>\n\n&lt;html&gt;&lt;body&gt;&lt;h1&gt;Hello from ${d.detail} on ${host}&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;\n`;
+    return OK(s);
+  }
+});
+
+def('dig', {
+  cat:'name', desc:'query DNS directly',
+  usage:'dig NAME',
+  man:'Asks a DNS server to resolve a name and shows exactly what came back. Unlike ping, it does ONLY the lookup — so it separates "the name is wrong" from "the host is unreachable", which are constantly confused.\n\nRead the status line:\n  NOERROR   the name resolved. Check the ANSWER section for what it resolved TO.\n  NXDOMAIN  no such name exists.\n\nA name that resolves to the wrong address is far more common, and far more confusing, than one that does not resolve at all.',
+  ex:['dig api.example.com','dig ghost.example.com','dig nothere.example.com'],
+  run:(a,h)=>{
+    const name = a[0];
+    if(!name) return BAD('dig: no name specified');
+    const r = resolve(h, name);
+    let s = `; &lt;&lt;&gt;&gt; DiG 9.18 &lt;&lt;&gt;&gt; ${name}\n`;
+    if(r.err && r.err.includes('unreachable'))
+      return BAD(s + `;; communications error to ${h.resolver}#53: timed out\n<span class="d">(the resolver itself is unreachable — fix connectivity before blaming DNS)</span>`);
+    if(r.err === 'NXDOMAIN')
+      return OK(s + `;; -&gt;&gt;HEADER&lt;&lt;- opcode: QUERY, status: <span class="e">NXDOMAIN</span>\n\n;; QUESTION SECTION:\n;${name}.\t\tIN\tA\n\n<span class="d">;; no such name exists</span>\n`);
+    if(r.err) return BAD(s + ';; ' + r.err);
+    return OK(s + `;; -&gt;&gt;HEADER&lt;&lt;- opcode: QUERY, status: <span class="ok">NOERROR</span>\n\n;; QUESTION SECTION:\n;${name}.\t\tIN\tA\n\n;; ANSWER SECTION:\n${name}.\t300\tIN\tA\t<span class="a">${r.ip}</span>\n\n;; Query time: 2 msec\n;; SERVER: ${h.resolver}#53\n<span class="d">;; resolved via ${r.how}</span>\n`);
+  }
+});
+def('nslookup', Object.assign({}, C.dig, { desc:'query DNS (older tool)', man:'An older DNS query tool. dig gives more detail and is what most people use now, but nslookup is on almost every machine including Windows.' }));
+
+def('resolvectl', {
+  cat:'name', desc:'show which DNS server this host uses',
+  usage:'resolvectl status',
+  man:'Shows the configured resolver. The same information lives in /etc/resolv.conf. If this points somewhere unreachable, every name lookup fails with a timeout — and the symptom looks like "the internet is down" rather than "DNS is misconfigured".',
+  ex:['resolvectl status'],
+  run:(a,h)=>OK(`Global\n  Protocols: +LLMNR +mDNS\nLink 2 (eth0)\n  Current DNS Server: <span class="a">${h.resolver||'(none)'}</span>\n  DNS Servers: ${h.resolver||'(none)'}\n`)
+});
+
+def('setdns', {
+  cat:'name', desc:'set this host\'s DNS server',
+  usage:'setdns IP',
+  man:'Points this host at a different DNS server — the simulator\'s equivalent of editing /etc/resolv.conf or configuring systemd-resolved.',
+  ex:['setdns 10.0.1.53'],
+  run:(a,h)=>{
+    if(!ipToInt(a[0])) return BAD('setdns: expected an IP address');
+    h.resolver = a[0];
+    return OK(`resolver set to ${a[0]}\n`);
+  }
+});
+
+def('ufw', {
+  cat:'fw', desc:'manage the firewall',
+  usage:'ufw status | ufw allow PORT | ufw deny PORT | ufw reject PORT | ufw default deny|allow',
+  man:'A friendly front end to the kernel firewall.\n\n  ufw status            what is currently allowed\n  ufw allow 8080        let that port through\n  ufw deny 8080         DROP silently  -> the client sees a TIMEOUT\n  ufw reject 8080       refuse politely -> the client sees CONNECTION REFUSED\n  ufw default deny      block everything not explicitly allowed\n\nThe deny/reject distinction is worth internalising. Dropping silently is the usual choice because it tells a scanner nothing — but it also means legitimate users see a long hang instead of an instant error, and that is exactly why "timed out" so often means "firewall".',
+  ex:['ufw status','ufw deny 8080','ufw allow 8080','ufw default deny'],
+  run:(a,h)=>{
+    const sub = a[0];
+    if(!sub || sub === 'status'){
+      let s = `Status: <span class="${h.firewall.policyIn==='deny'?'w':'ok'}">active</span>\nDefault: ${h.firewall.policyIn} (incoming)\n\n`;
+      if(!h.firewall.rules.length) return OK(s + '<span class="d">(no specific rules)</span>\n');
+      s += 'To                Action\n--                ------\n';
+      for(const r of h.firewall.rules)
+        s += `${String(r.port||r.proto).padEnd(18)}<span class="${r.action==='allow'?'ok':'e'}">${r.action.toUpperCase()}</span>\n`;
+      return OK(s);
+    }
+    if(sub === 'default'){
+      const p = a[1];
+      if(p !== 'deny' && p !== 'allow') return BAD('ufw: expected deny or allow');
+      h.firewall.policyIn = p;
+      return OK(`Default incoming policy changed to '${p}'\n`);
+    }
+    if(['allow','deny','reject'].includes(sub)){
+      const target = a[1];
+      if(!target) return BAD('ufw: missing port');
+      const port = parseInt(target,10);
+      h.firewall.rules = h.firewall.rules.filter(r => !(r.port === port) && !(target==='icmp' && r.proto==='icmp'));
+      h.firewall.rules.push(target === 'icmp' ? { proto:'icmp', action:sub } : { port, action:sub, proto:'tcp' });
+      return OK(`Rule added: ${sub} ${target}\n`);
+    }
+    return BAD('Usage: ufw status|allow|deny|reject|default');
+  }
+});
+
+def('tcpdump', {
+  cat:'diag', desc:'watch packets on the wire',
+  usage:'tcpdump',
+  man:'Captures packets as they cross an interface. The ultimate arbiter: when logs disagree about whether traffic arrived, tcpdump settles it. If you see the request arrive but no reply leave, the problem is on this host. If nothing arrives at all, it never got here.',
+  ex:['tcpdump'],
+  run:(a,h)=>OK(LOG.length
+    ? LOG.slice(-8).map(l=>`<span class="d">${l.t}</span> ${l.s} &gt; ${l.d}: ${l.m}`).join('\n')+'\n'
+    : '<span class="d">(no packets captured yet — send some traffic first)</span>\n')
+});
+
+def('arp', { cat:'diag', desc:'show the local address table', usage:'arp -n',
+  man:'Maps IP addresses to hardware addresses for machines on the SAME subnet. If an entry is missing or incomplete, the host never answered — which usually means it is off, or not on this subnet at all.',
+  ex:['arp -n'],
+  run:(a,h)=>{
+    const mine = upIfaces(h);
+    const rows = Object.values(NET.hosts).filter(o=>o!==h)
+      .flatMap(o=>upIfaces(o).map(([,f])=>f))
+      .filter(f=>mine.some(([,m])=>sameSubnet(m.ip,f.ip,m.prefix)));
+    if(!rows.length) return OK('<span class="d">(no neighbours)</span>\n');
+    return OK('Address        HWtype  HWaddress           Iface\n' +
+      rows.map(f=>`${f.ip.padEnd(15)}ether   ${f.mac}   eth0`).join('\n')+'\n');
+  } });
+
+def('clear', { cat:'misc', desc:'clear this terminal', usage:'clear',
+  man:'Clears the screen. Ctrl-L does the same.', ex:['clear'], run:()=>({ out:'', clear:true }) });
+
+/* packet log for tcpdump */
+const LOG = [];
+function logPkt(src, dst, msg){
+  LOG.push({ t:new Date().toTimeString().slice(0,8), s:src, d:dst, m:msg });
+  if(LOG.length > 60) LOG.shift();
+}
+
+/* ==========================================================================
+   3. Topology
+   ========================================================================== */
+
+const POS = {
+  client:{ x:70,  y:42 },
+  dns:   { x:70,  y:126 },
+  router:{ x:250, y:84 },
+  server:{ x:430, y:42 },
+  laptop:{ x:430, y:126 }
+};
+
+function drawTopo(){
+  const el = document.getElementById('topo');
+  const W = 560, H = 190;
+  let s = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
+
+  s += `<text class="subnet" x="70" y="16" text-anchor="middle">lan-a  10.0.1.0/24</text>`;
+  s += `<text class="subnet" x="430" y="16" text-anchor="middle">lan-b  10.0.2.0/24</text>`;
+
+  for(const n of ['client','dns']) s += wire(POS[n], POS.router);
+  for(const n of ['server','laptop']) s += wire(POS.router, POS[n]);
+
+  for(const [name,p] of Object.entries(POS)){
+    const h = NET.hosts[name];
+    const up = upIfaces(h).length > 0;
+    const ip = up ? upIfaces(h).map(([,f])=>f.ip).join(' / ') : 'no address';
+    s += `<g>
+      <rect class="box ${up?'':'down'}" id="box-${name}" x="${p.x-46}" y="${p.y-17}" width="92" height="34" rx="5"/>
+      <text class="name" x="${p.x}" y="${p.y-2}" text-anchor="middle">${name}</text>
+      <text class="ip" x="${p.x}" y="${p.y+10}" text-anchor="middle" ${up?'':'fill="#F87171"'}>${ip}</text>
+    </g>`;
+  }
+  s += `<circle class="pkt" id="pkt" cx="-20" cy="-20" fill="#2DD4BF" opacity="0"/>`;
+  s += `</svg>`;
+  el.innerHTML = s;
+}
+function wire(a,b){
+  return `<line class="wire" x1="${a.x+46>b.x?a.x-46:a.x+46}" y1="${a.y}" x2="${b.x>a.x?b.x-46:b.x+46}" y2="${b.y}"/>`;
+}
+
+let animToken = 0;
+function animate(path, ok){
+  if(path.length < 2) return;
+  for(let i=0;i<path.length-1;i++) logPkt(path[i], path[i+1], ok?'ok':'dropped');
+  const pkt = document.getElementById('pkt');
+  if(!pkt) return;
+  const token = ++animToken;
+  const pts = path.map(n => POS[n]).filter(Boolean);
+  if(pts.length < 2) return;
+  pkt.setAttribute('fill', ok ? '#4ADE80' : '#F87171');
+  pkt.setAttribute('opacity','1');
+  let seg = 0, t = 0;
+  const step = () => {
+    if(token !== animToken) return;
+    t += 0.045;
+    if(t >= 1){ t = 0; seg++; }
+    if(seg >= pts.length-1){
+      pkt.setAttribute('opacity','0');
+      return;
+    }
+    const a = pts[seg], b = pts[seg+1];
+    pkt.setAttribute('cx', a.x + (b.x-a.x)*t);
+    pkt.setAttribute('cy', a.y + (b.y-a.y)*t);
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/* ==========================================================================
+   4. Terminals
+   ========================================================================== */
+
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+const PANES = {};
+
+function makePane(id, hostName){
+  const el = document.getElementById(id);
+  el.innerHTML = `
+    <div class="pane-bar">
+      <select></select>
+      <span class="ipn"></span>
+      <span class="sp"></span>
+      <span>terminal ${id === 'paneA' ? 'A' : 'B'}</span>
+    </div>
+    <div class="scr"></div>
+    <div class="iline"><span class="ps"></span><input autocomplete="off" spellcheck="false"></div>`;
+
+  const sel = el.querySelector('select');
+  for(const n of Object.keys(NET.hosts)){
+    const o = document.createElement('option');
+    o.value = n; o.textContent = n;
+    sel.appendChild(o);
+  }
+  sel.value = hostName;
+
+  const p = {
+    id, host:hostName,
+    scr: el.querySelector('.scr'),
+    input: el.querySelector('input'),
+    ipn: el.querySelector('.ipn'),
+    sel, hist:[], hi:0
+  };
+  PANES[id] = p;
+
+  sel.onchange = ()=>{ p.host = sel.value; sync(p); p.input.focus(); };
+  p.input.addEventListener('keydown', e=>{
+    if(e.key === 'Enter'){ const v = p.input.value; p.input.value=''; exec(p, v); e.preventDefault(); }
+    else if(e.key === 'ArrowUp'){ if(p.hi>0){ p.hi--; p.input.value = p.hist[p.hi]; } e.preventDefault(); }
+    else if(e.key === 'ArrowDown'){ if(p.hi<p.hist.length-1){ p.hi++; p.input.value=p.hist[p.hi]; } else { p.hi=p.hist.length; p.input.value=''; } e.preventDefault(); }
+    else if(e.key === 'Tab'){
+      e.preventDefault();
+      const frag = p.input.value.split(/\s+/).pop();
+      const pool = Object.keys(C).filter(c=>c.startsWith(frag));
+      if(pool.length === 1) p.input.value = p.input.value.slice(0, p.input.value.length-frag.length) + pool[0];
+      else if(pool.length) write(p, pool.join('  '));
+    }
+    else if(e.key==='l' && e.ctrlKey){ e.preventDefault(); p.scr.innerHTML=''; }
+  });
+  el.addEventListener('click', ()=>{ if(!getSelection().toString()) p.input.focus(); });
+  sync(p);
+  return p;
+}
+
+function ps1(p){
+  return `<span class="p">${NET.hosts[p.host].name}</span><span class="d">:~</span><span class="p">$</span> `;
+}
+function sync(p){
+  p.input.parentElement.querySelector('.ps').innerHTML = ps1(p);
+  const h = NET.hosts[p.host];
+  const ifs = upIfaces(h);
+  p.ipn.textContent = ifs.length ? ifs.map(([,f])=>f.ip).join(' / ') : '(no address)';
+  p.ipn.style.color = ifs.length ? '' : 'var(--red)';
+}
+function write(p, html){
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  p.scr.appendChild(d);
+  p.scr.scrollTop = p.scr.scrollHeight;
+}
+
+function exec(p, line){
+  write(p, ps1(p) + `<span class="c">${esc(line)}</span>`);
+  const t = line.trim();
+  if(!t){ return; }
+  p.hist.push(t); p.hi = p.hist.length;
+
+  const parts = t.split(/\s+/);
+  const name = parts[0];
+  const cmd = C[name];
+  if(!cmd){ write(p, `<span class="e">${esc(name)}: command not found</span>  <span class="d">— type help</span>`); afterCmd(p, t); return; }
+
+  const flags = {}, args = [];
+  for(const x of parts.slice(1)){
+    if(/^-[a-zA-Z]+$/.test(x) && !['-l','-z','-zv','-v','-n','-tlnp','-tln'].includes(x)){
+      for(const ch of x.slice(1)) flags[ch] = true;
+    } else if(/^-[a-zA-Z]+$/.test(x)){
+      for(const ch of x.slice(1)) flags[ch] = true;
+      args.push(x);
+    } else args.push(x);
+  }
+
+  let r;
+  try{ r = cmd.run(args, NET.hosts[p.host], flags); }
+  catch(e){ r = BAD(`${name}: ${e.message}`); }
+  if(r && r.clear) p.scr.innerHTML = '';
+  else {
+    if(r && r.out) write(p, r.out.replace(/\n$/,''));
+    if(r && r.err) write(p, `<span class="e">${r.err}</span>`);
+  }
+  sync(p); Object.values(PANES).forEach(sync);
+  afterCmd(p, t);
+}
+
+/* ==========================================================================
+   5. Lessons
+   ========================================================================== */
+
+const MODULES = [
+{
+  t:'Two hosts, one wire', lead:'Two terminals, two machines. Everything in networking starts with whether a packet can get from one to the other and back.',
+  blocks:[
+    {h:'You have two machines', p:[
+      'The top terminal is <strong>client</strong> on <code>10.0.1.10</code>. The bottom one is <strong>server</strong> on <code>10.0.2.20</code>. The selector in each terminal bar switches which machine you are typing into — and the diagram above shows the whole network.',
+      'That is the point of two panes: networking questions almost never have an answer you can find from one side alone.'
+    ]},
+    {h:'An address and a mask', p:[
+      '<code>ip addr</code> shows the interfaces. <code>10.0.1.10/24</code> means the address is <code>10.0.1.10</code> and the first <strong>24 bits</strong> identify the network — so everything from <code>10.0.1.0</code> to <code>10.0.1.255</code> is a neighbour, reachable directly.',
+      'Anything outside that range has to go through a router. That single rule explains most of what follows.'
+    ], demo:'<span class="h">client:~$</span> ip addr\n2: eth0: &lt;BROADCAST,MULTICAST,UP&gt; mtu 1500 state <span class="g">UP</span>\n    inet 10.0.1.10/24 brd + scope global eth0'},
+    {h:'ping asks one question', p:[
+      '<code>ping</code> asks: can packets reach that address and come back? Nothing more. A host that pings perfectly can still refuse every connection you make to it — ports are a separate question entirely.'
+    ], tip:{b:'Watch the diagram', t:'Every ping, nc and curl animates a packet along the real path it takes. Green made it; red died somewhere. The hop where it stops is the hop with the problem.', key:true}}
+  ],
+  tasks:[
+    { txt:'Run <code>ip addr</code> on client', hint:'ip addr', check:s=>s.did('client','ip addr') },
+    { txt:'Run <code>hostname</code> in the bottom terminal to confirm it is a different machine', hint:'hostname', check:s=>s.ran('hostname') },
+    { txt:'From client, <code>ping 10.0.1.1</code> — the router, on your own subnet', hint:'ping 10.0.1.1', check:s=>s.did('client','ping 10.0.1.1') },
+    { txt:'From client, <code>ping 10.0.2.20</code> — the server, across the router', hint:'ping 10.0.2.20', check:s=>s.did('client','ping 10.0.2.20') },
+    { txt:'Run <code>traceroute 10.0.2.20</code> and count the hops', hint:'traceroute 10.0.2.20', check:s=>s.ran('traceroute') }
+  ]
+},
+{
+  t:'Ports and listeners', lead:'An address gets you to a machine. A port gets you to a program on it. Confusing the two is the most common beginner mistake in networking.',
+  blocks:[
+    {h:'Something has to be listening', p:[
+      'A host can be perfectly healthy and still refuse you, because nothing is accepting connections on the port you asked for. That is not a network failure — it is a service failure, and the fix is somewhere else entirely.'
+    ]},
+    {h:'Start a service, then connect to it', p:[
+      'Use the <strong>bottom terminal</strong> (server) to start a listener, and the <strong>top</strong> (client) to connect. This is the two-terminal pattern you will use for the rest of the course.'
+    ], demo:'<span class="h">server:~$</span> serve 8080\n<span class="g">Listening on 0.0.0.0:8080</span>\n\n<span class="h">client:~$</span> nc -zv 10.0.2.20 8080\n<span class="g">Connection to 10.0.2.20 8080 port [tcp/*] succeeded!</span>'},
+    {h:'ss -tlnp is the check', p:[
+      '<code>ss -tlnp</code> lists what is listening: <strong>t</strong>cp, <strong>l</strong>istening, <strong>n</strong>umeric, <strong>p</strong>rocess. Run it on the server before you blame the network.',
+      'Watch the <em>address</em> it is bound to. <code>127.0.0.1:8080</code> accepts only from that machine itself; <code>0.0.0.0:8080</code> accepts from anywhere. A service bound to localhost is the single most common cause of "it works on the server but not from my laptop".'
+    ], tip:{b:'Order of checks', t:'Is it listening (ss)? Then can I reach the port (nc)? Then does the application respond (curl)? Working up that ladder saves hours of guessing.'}}
+  ],
+  tasks:[
+    { txt:'On <strong>server</strong>, start a listener: <code>serve 8080</code>', hint:'serve 8080', check:()=>!!NET.hosts.server.listeners[8080] },
+    { txt:'On server, confirm it with <code>ss -tlnp</code>', hint:'ss -tlnp', check:s=>s.did('server','ss') },
+    { txt:'From <strong>client</strong>, test the port: <code>nc -zv 10.0.2.20 8080</code>', hint:'nc -zv 10.0.2.20 8080', check:s=>s.did('client','nc') },
+    { txt:'From client, try port <code>9999</code> — nothing is listening there', hint:'nc -zv 10.0.2.20 9999', check:s=>s.matched('client',/nc .*9999/) }
+  ]
+},
+{
+  t:'Refused vs timed out', lead:'This is the most useful distinction in the whole subject. Two failures that look equally broken tell you completely different things.',
+  blocks:[
+    {h:'Connection refused is good news', p:[
+      'Refused means your packet <strong>arrived</strong>. The host was there, it looked at the port, found nothing listening, and sent back a polite refusal.',
+      'Routing works. The firewall let you through. The host is up. Only the service is missing — so go look at the service, not the network.'
+    ], demo:'<span class="h">client:~$</span> nc -zv 10.0.2.20 9999\n<span class="r">connect failed: Connection refused</span>\n<span class="m">→ you reached the host. Nothing is listening. Check the service.</span>'},
+    {h:'Timed out means nothing came back', p:[
+      'Timeout means silence. Your packet went out and nothing ever answered — so you cannot even tell whether it arrived.',
+      'The usual causes: a firewall dropping it silently, a wrong route, or nothing at that address at all.'
+    ], demo:'<span class="h">client:~$</span> nc -zv 10.0.2.20 8080\n<span class="r">connect failed: Connection timed out</span>\n<span class="m">→ nobody answered. Firewall, routing, or wrong address.</span>'},
+    {h:'Why the difference exists', p:[
+      'A firewall can <strong>reject</strong> (send back a refusal) or <strong>drop</strong> (say nothing). Most block rules drop, because silence gives a port scanner no information.',
+      'The side effect is that legitimate users get a long hang instead of an instant error. Which is exactly why "it just hangs" so often means firewall.'
+    ], tip:{b:'Learn this one sentence', t:'Refused = reached the host, no service. Timed out = never got there. That single distinction eliminates half of all network guesswork.', key:true}}
+  ],
+  tasks:[
+    { txt:'Make sure <code>serve 8080</code> is running on server', hint:'serve 8080', check:()=>!!NET.hosts.server.listeners[8080] },
+    { txt:'From client, connect to 8080 — it should succeed', hint:'nc -zv 10.0.2.20 8080', check:s=>s.matched('client',/nc .*8080/) },
+    { txt:'On server, drop the port silently: <code>ufw deny 8080</code>', hint:'ufw deny 8080', check:()=>NET.hosts.server.firewall.rules.some(r=>r.port===8080&&r.action==='deny') },
+    { txt:'From client, try again — read the <strong>timeout</strong>', hint:'nc -zv 10.0.2.20 8080', check:s=>s.sawStatus('timeout') },
+    { txt:'On server, <code>ufw reject 8080</code>, then try once more — now it is <strong>refused</strong>', hint:'ufw reject 8080', check:()=>NET.hosts.server.firewall.rules.some(r=>r.port===8080&&r.action==='reject') }
+  ]
+},
+{
+  t:'Subnets', lead:'The mask decides who is a neighbour. Get it wrong and two machines on the same physical wire cannot speak to each other.',
+  blocks:[
+    {h:'Reading 10.0.1.10/24', p:[
+      'The <code>/24</code> is the prefix length: how many leading bits belong to the <strong>network</strong>. The rest identify the <strong>host</strong>.',
+      '<code>/24</code> = the first three octets. So <code>10.0.1.x</code> are all neighbours, and <code>10.0.2.20</code> is on a different network — even if you plug both into the same switch.'
+    ], demo:'10.0.1.10/24\n└──┬───┘ └┬┘\n network host\n\n /24 → 10.0.1.0 – 10.0.1.255   (254 usable)\n /16 → 10.0.0.0 – 10.0.255.255\n /32 → exactly one address'},
+    {h:'Direct or via a router', p:[
+      'When a host sends a packet it asks one question first: <strong>is this address inside my own subnet?</strong>',
+      'If yes, it delivers directly. If no, it hands the packet to its gateway. There is no third option — and if it has no gateway, you get "Network is unreachable" immediately, without a single packet leaving the machine.'
+    ], tip:{b:'A classic bug', t:'Two machines on the same wire with masks /24 and /16 can end up disagreeing about whether they are neighbours. One delivers directly, the other routes via a gateway, and traffic flows one way only.'}}
+  ],
+  tasks:[
+    { txt:'On client, run <code>ip route</code> and find the default gateway', hint:'ip route', check:s=>s.did('client','ip route') },
+    { txt:'Run <code>arp -n</code> to see who is on your subnet', hint:'arp -n', check:s=>s.ran('arp') },
+    { txt:'Ping the DNS server <code>10.0.1.53</code> — same subnet, no router needed', hint:'ping 10.0.1.53', check:s=>s.matched('client',/ping .*10\.0\.1\.53/) },
+    { txt:'Run <code>traceroute 10.0.2.20</code> and note the extra hop for the other subnet', hint:'traceroute 10.0.2.20', check:s=>s.matched('client',/traceroute .*10\.0\.2/) }
+  ]
+},
+{
+  t:'Routing', lead:'A routing table is a short list of rules ending in "and everything else goes that way". Break it and the failure is instant and total.',
+  blocks:[
+    {h:'The table', p:[
+      '<code>ip route</code> shows it. Connected subnets appear automatically. The important line is <code>default via …</code> — the gateway for everything not on a subnet you are attached to.'
+    ], demo:'<span class="h">client:~$</span> ip route\ndefault via <span class="h">10.0.1.1</span> dev eth0\n10.0.1.0/24 dev eth0 proto kernel scope link src 10.0.1.10'},
+    {h:'No default route, no internet', p:[
+      'Delete the default route and every address outside your own subnet becomes unreachable instantly — the host does not even try. Neighbours still work perfectly, which makes it look like a partial failure rather than a configuration one.'
+    ]},
+    {h:'The router has to forward', p:[
+      'A router is just a host with two interfaces and permission to pass traffic between them. If forwarding is off, packets arrive and die there — and the sender sees a timeout, with no clue that they got that far. <code>traceroute</code> is what reveals it.'
+    ], tip:{b:'Try breaking it', t:'Delete client\'s default route, watch 10.0.2.20 fail immediately with "Network is unreachable", then put it back. Instant unreachable means the routing table, not the network.'}}
+  ],
+  tasks:[
+    { txt:'On client, delete the default route: <code>ip route del default</code>', hint:'ip route del default', check:()=>!NET.hosts.client.routes.some(r=>r.dst==='default') },
+    { txt:'Ping <code>10.0.2.20</code> — note it fails <strong>instantly</strong>, not after a wait', hint:'ping 10.0.2.20', check:s=>s.sawStatus('unreach') },
+    { txt:'Confirm a neighbour still works: <code>ping 10.0.1.53</code>', hint:'ping 10.0.1.53', check:s=>s.matched('client',/ping .*10\.0\.1\.53/) },
+    { txt:'Restore it: <code>ip route add default via 10.0.1.1</code>', hint:'ip route add default via 10.0.1.1', check:()=>NET.hosts.client.routes.some(r=>r.dst==='default'&&r.via==='10.0.1.1') }
+  ]
+},
+{
+  t:'Build a network', lead:'The laptop is plugged in but completely unconfigured. Bring it online yourself — interface, address, gateway, in that order.',
+  blocks:[
+    {h:'It has nothing', p:[
+      'Switch a terminal to <strong>laptop</strong>. Its interface is DOWN and has no address. It is on the lan-b wire, physically next to the server, and it cannot reach anything at all.',
+      'This is exactly what a fresh machine or a misconfigured container looks like.'
+    ]},
+    {h:'Three steps, in order', p:[
+      'Bring the link up, give it an address on the right subnet, then tell it where the gateway is. Each step fails differently if you skip it, which is worth seeing.'
+    ], demo:'<span class="h">laptop:~$</span> ip link set dev eth0 up\n<span class="h">laptop:~$</span> ip addr add 10.0.2.63/24 dev eth0\n<span class="h">laptop:~$</span> ip route add default via 10.0.2.1\n<span class="h">laptop:~$</span> ping 10.0.2.20\n<span class="g">64 bytes from 10.0.2.20: icmp_seq=1 ttl=64</span>'},
+    {h:'Get the subnet right', p:[
+      'The laptop sits on lan-b, so it needs a <code>10.0.2.x</code> address and <code>10.0.2.1</code> as its gateway. Give it a <code>10.0.1.x</code> address instead and nothing works — its neighbours are on a network it is not physically attached to.'
+    ], tip:{b:'Try it wrong first', t:'Assign 10.0.1.63/24 and ping the server. The failure — and how the diagram shows it — teaches more than getting it right the first time.'}}
+  ],
+  tasks:[
+    { txt:'Switch a terminal to <strong>laptop</strong> and run <code>ip addr</code>', hint:'select laptop, then: ip addr', check:s=>s.did('laptop','ip addr') },
+    { txt:'Bring the interface up', hint:'ip link set dev eth0 up', check:()=>NET.hosts.laptop.ifaces.eth0.up },
+    { txt:'Give it an address on lan-b', hint:'ip addr add 10.0.2.63/24 dev eth0', check:()=>{ const f=NET.hosts.laptop.ifaces.eth0; return f.ip && sameSubnet(f.ip,'10.0.2.1',24); } },
+    { txt:'Add the default gateway', hint:'ip route add default via 10.0.2.1', check:()=>NET.hosts.laptop.routes.some(r=>r.dst==='default') },
+    { txt:'Ping the server from the laptop', hint:'ping 10.0.2.20', check:s=>s.did('laptop','ping') }
+  ]
+},
+{
+  t:'DNS', lead:'Names are a layer on top of addresses, and they fail in their own distinct ways. Separating "the name is wrong" from "the host is unreachable" saves enormous amounts of time.',
+  blocks:[
+    {h:'dig does only the lookup', p:[
+      '<code>ping api.example.com</code> does two things — resolve, then send. When it fails you do not know which half broke. <code>dig</code> does only the first, so it tells you precisely.'
+    ], demo:'<span class="h">client:~$</span> dig api.example.com\n;; status: <span class="g">NOERROR</span>\n;; ANSWER SECTION:\napi.example.com.  300  IN  A  <span class="h">10.0.2.20</span>'},
+    {h:'Three different failures', p:[
+      '<strong>NXDOMAIN</strong> — the name does not exist. A typo, or a record never created.',
+      '<strong>Resolver timeout</strong> — the DNS server itself is unreachable. Everything appears broken, and the real fault is one machine.',
+      '<strong>NOERROR, wrong address</strong> — the nastiest. The name resolves perfectly, to somewhere that is not your service. Stale record, wrong environment, leftover /etc/hosts entry.'
+    ], tip:{b:'The one that wastes days', t:'A name resolving to the WRONG address looks like a broken service, not a broken name. Always check what dig actually returned, not just that it succeeded.', key:true}},
+    {h:'When DNS itself is unreachable', p:[
+      'If the resolver cannot be reached, every lookup times out and the whole machine appears to have lost the network — even though addresses still work fine. Pinging an IP successfully while names fail is the signature of a DNS problem.'
+    ]}
+  ],
+  tasks:[
+    { txt:'From client, <code>dig api.example.com</code> and read the ANSWER section', hint:'dig api.example.com', check:s=>s.ran('dig') },
+    { txt:'Look up a name that does not exist and spot <code>NXDOMAIN</code>', hint:'dig nothere.example.com', check:s=>s.matched('client',/dig (?!api\.|ghost\.)/) },
+    { txt:'<code>dig ghost.example.com</code> — it resolves, but is anything there?', hint:'dig ghost.example.com  then  ping ghost.example.com', check:s=>s.matched('client',/dig ghost/) },
+    { txt:'Point client at a dead resolver: <code>setdns 10.0.1.99</code>, then dig anything', hint:'setdns 10.0.1.99', check:s=>s.ran('setdns') },
+    { txt:'Prove addresses still work: <code>ping 10.0.2.20</code> succeeds while names fail', hint:'ping 10.0.2.20', check:s=>s.matched('client',/ping 10\.0\.2\.20/) },
+    { txt:'Put it back: <code>setdns 10.0.1.53</code>', hint:'setdns 10.0.1.53', check:()=>NET.hosts.client.resolver==='10.0.1.53' }
+  ]
+},
+{
+  t:'The whole ladder', lead:'Put it together. A request crosses DNS, routing, the firewall, TCP and finally HTTP — and curl -v narrates every rung so you can see which one you are stuck on.',
+  blocks:[
+    {h:'curl -v shows the stages', p:[
+      'Watch the order: resolve the name, open the connection, then send the request. Each stage has its own failure, and each points somewhere completely different.'
+    ], demo:'<span class="h">client:~$</span> curl -v http://api.example.com:8080\n<span class="m">* Host api.example.com:8080 was resolved.\n* Trying 10.0.2.20:8080...\n* Connected to api.example.com (10.0.2.20) port 8080\n&gt; GET / HTTP/1.1</span>\n<span class="g">HTTP/1.1 200 OK</span>'},
+    {h:'The diagnostic ladder', p:[
+      '<strong>Could not resolve host</strong> → DNS. The network is fine; the name is not.<br><strong>Connection refused</strong> → TCP. You reached the machine; the service is not running.<br><strong>Connection timed out</strong> → firewall or routing. Nothing answered.<br><strong>An HTTP status</strong> → you got all the way there. It is now an application problem.'
+    ]},
+    {h:'502 versus 504', p:[
+      'Once you are speaking HTTP, the same distinction returns one layer up. A <strong>502 Bad Gateway</strong> means the proxy reached the backend and got something invalid — like connection refused. A <strong>504 Gateway Timeout</strong> means the backend never answered — like a timeout.',
+      'Same two failure shapes, one layer higher. Recognising the pattern is what makes the rest transferable.'
+    ], tip:{b:'Work up, never down', t:'Always diagnose from the bottom: address, then port, then name, then application. Starting at the application and guessing downward is how afternoons disappear.', key:true}}
+  ],
+  tasks:[
+    { txt:'On server, run <code>serve 80 nginx</code>', hint:'serve 80 nginx', check:()=>!!NET.hosts.server.listeners[80] },
+    { txt:'Make sure the firewall allows it: <code>ufw allow 80</code>', hint:'ufw allow 80', check:()=>NET.hosts.server.firewall.rules.some(r=>r.port===80&&r.action==='allow') || !NET.hosts.server.firewall.rules.some(r=>r.port===80) },
+    { txt:'From client: <code>curl -v http://api.example.com</code>', hint:'curl -v http://api.example.com', check:s=>s.matched('client',/curl .*api\.example\.com/) },
+    { txt:'Now <code>curl http://api.example.com:9999</code> — refused, and you know why', hint:'curl http://api.example.com:9999', check:s=>s.matched('client',/curl .*9999/) },
+    { txt:'Try <code>curl http://nothere.example.com</code> — a DNS failure, not a connection one', hint:'curl http://nothere.example.com', check:s=>s.matched('client',/curl .*nothere/) },
+    { txt:'Run <code>tcpdump</code> on server to see what actually arrived', hint:'tcpdump', check:s=>s.ran('tcpdump') }
+  ]
+}
+];
+
+/* ==========================================================================
+   6. Progress
+   ========================================================================== */
+
+let mod = 0, doneTasks = {};
+const HIST = [];          // {host, line}
+const STATUSES = new Set();
+const PKEY = 'packet-lab-progress';
+
+const S = {
+  ran: n => HIST.some(h => h.line.split(/\s+/)[0] === n),
+  did: (host, prefix) => HIST.some(h => h.host === host && h.line.startsWith(prefix)),
+  matched: (host, rx) => HIST.some(h => h.host === host && rx.test(h.line)),
+  sawStatus: s => STATUSES.has(s)
+};
+
+async function loadProgress(){
+  try{
+    const r = await window.storage.get(PKEY);
+    if(r && r.value){
+      const p = JSON.parse(r.value);
+      doneTasks = p.tasks || {};
+      (p.hist||[]).forEach(x=>HIST.push(x));
+      (p.status||[]).forEach(x=>STATUSES.add(x));
+    }
+  }catch(e){}
+  MODULES.forEach((m,i)=>{ if(!doneTasks[i]) doneTasks[i] = m.tasks.map(()=>false); });
+  renderRail(); renderLesson();
+}
+async function saveProgress(){
+  try{ await window.storage.set(PKEY, JSON.stringify({
+    tasks:doneTasks, hist:HIST.slice(-300), status:[...STATUSES]
+  })); }catch(e){}
+}
+
+function modDone(i){ return doneTasks[i] && doneTasks[i].every(Boolean); }
+function totalDone(){ return MODULES.filter((_,i)=>modDone(i)).length; }
+
+function renderRail(){
+  const el = document.getElementById('rail');
+  el.innerHTML = '';
+  MODULES.forEach((m,i)=>{
+    const b = document.createElement('button');
+    b.className = 'mbtn' + (i===mod?' active':'') + (modDone(i)?' done':'');
+    b.title = m.t;
+    b.innerHTML = `<span>${String(i+1).padStart(2,'0')}</span><span class="dot"></span>`;
+    b.onclick = ()=>{ mod=i; renderRail(); renderLesson(); document.querySelector('.lesson').scrollTop=0; };
+    el.appendChild(b);
+  });
+  const d = totalDone();
+  document.getElementById('pfill').style.width = (d/MODULES.length*100)+'%';
+  document.getElementById('ptxt').textContent = `${d} / ${MODULES.length}`;
+  Progress.report(d, MODULES.length);
+}
+
+function renderLesson(){
+  const m = MODULES[mod];
+  let h = `<div class="eyebrow">Module ${String(mod+1).padStart(2,'0')}</div><h1>${esc(m.t)}</h1><p class="lead">${esc(m.lead)}</p>`;
+  m.blocks.forEach((b,i)=>{
+    h += `<h2><span class="ix">${String(i+1).padStart(2,'0')}</span>${esc(b.h)}</h2>`;
+    (b.p||[]).forEach(p=>h += `<p>${p}</p>`);
+    if(b.demo) h += `<div class="demo">${b.demo}</div>`;
+    if(b.tip)  h += `<div class="tip${b.tip.key?' key':''}"><b>${esc(b.tip.b)}:</b> ${esc(b.tip.t)}</div>`;
+  });
+  h += `<div class="tasks"><div class="tasks-h">Practice — use both terminals</div>`;
+  m.tasks.forEach((t,i)=>{
+    h += `<div class="task${doneTasks[mod][i]?' done':''}"><span class="box">✓</span><span class="txt">${t.txt}<span class="hint">${esc(t.hint)}</span></span></div>`;
+  });
+  h += `</div><div class="navrow">
+    <button class="btn" id="pv"${mod===0?' disabled':''}>← Previous</button><span class="sp"></span>
+    <button class="btn" id="nx"${mod===MODULES.length-1?' disabled':''}>Next module →</button></div>`;
+  const el = document.getElementById('lesson');
+  el.innerHTML = h;
+  const pv = document.getElementById('pv'), nx = document.getElementById('nx');
+  if(pv) pv.onclick = ()=>{ mod--; renderRail(); renderLesson(); el.scrollTop=0; };
+  if(nx) nx.onclick = ()=>{ mod++; renderRail(); renderLesson(); el.scrollTop=0; };
+}
+
+function afterCmd(p, line){
+  HIST.push({ host:p.host, line });
+  let changed = false;
+  MODULES.forEach((m,mi)=>m.tasks.forEach((t,ti)=>{
+    if(doneTasks[mi][ti]) return;
+    let ok = false;
+    try{ ok = !!t.check(S); }catch(e){}
+    if(ok){ doneTasks[mi][ti] = true; changed = true; if(mi===mod) toast(t.txt); }
+  }));
+  if(changed){ saveProgress(); renderRail(); renderLesson(); }
+}
+
+let tt;
+function toast(txt){
+  const el = document.getElementById('toast');
+  el.innerHTML = `<b>✓ Task complete</b><br>${txt}`;
+  el.classList.add('show');
+  clearTimeout(tt); tt = setTimeout(()=>el.classList.remove('show'), 2400);
+}
+
+/* record the outcome of every delivery, so tasks can check what you SAW */
+const _deliver = deliver;
+deliver = function(...args){
+  const r = _deliver.apply(null, args);
+  STATUSES.add(r.status);
+  return r;
+};
+
+/* ---------- boot ---------- */
+
+document.getElementById('resetNet').onclick = ()=>{
+  seedNet(); drawTopo();
+  Object.values(PANES).forEach(p=>{ p.scr.innerHTML=''; sync(p); banner(p); });
+};
+
+function banner(p){
+  write(p, `<span class="d">Simulated host — type</span> <span class="ok">help</span> <span class="d">for commands, or</span> <span class="ok">man &lt;command&gt;</span><span class="d">. Switch machines with the selector above.</span>\n`);
+}
+
+seedNet();
+drawTopo();
+makePane('paneA','client');
+makePane('paneB','server');
+Object.values(PANES).forEach(banner);
+loadProgress();
+PANES.paneA.input.focus();
+</script>
+
+<script src="../../assets/course-nav.js"></script>
+</body>
+</html>

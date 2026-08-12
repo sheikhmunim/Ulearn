@@ -63,6 +63,20 @@ window.COURSES = [
     order: 100
   },
   {
+    slug: "packet-lab",
+    href: "courses/packet-lab/",
+    title: "Packet Lab",
+    description: "Two live terminals on a simulated network — run a listener on one host, connect from another, and watch the packet cross the wire or die trying.",
+    tags: ["systems", "networking", "hands-on"],
+    level: "intermediate",
+    duration: "~3 hours",
+    type: "simulator",
+    accent: "#2DD4BF",
+    icon: "🛰️",
+    status: "live",
+    order: 100
+  },
+  {
     slug: "rust-in-7-days",
     href: "courses/rust-in-7-days/",
     title: "Rust in 7 Days",
