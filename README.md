@@ -4,7 +4,7 @@ A small library of interactive courses that run entirely in the browser. Every
 course is a single self-contained HTML page — no build step, no framework, no
 signup. Open the file and it works.
 
-**Live site:** _add your GitHub Pages URL here_
+**Live site:** https://sheikhmunim.github.io/Ulearn/
 
 ---
 
@@ -110,9 +110,9 @@ python -m http.server 8000
 
 GitHub Pages, deploying from `main` at the repository root:
 
-1. Push the repo to GitHub.
+1. Push to `main`.
 2. **Settings → Pages → Source:** _Deploy from a branch_ → `main` / `/ (root)`.
-3. Wait a minute; the site is at `https://<username>.github.io/<repo>/`.
+3. Wait a minute; the site is at https://sheikhmunim.github.io/Ulearn/.
 
 All internal paths are relative, so it works at a project path, at a user-site
 root, or on a custom domain without changes.

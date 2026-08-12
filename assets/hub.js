@@ -5,7 +5,7 @@
    ========================================================================== */
 
 // Set this to your repo URL to light up the footer link. Leave "" to hide it.
-const REPO_URL = "";
+const REPO_URL = "https://github.com/sheikhmunim/Ulearn";
 
 // Convention: a course's FIRST tag is its category — that's what the filter
 // tabs are built from. The rest are shown as chips on the card.
