@@ -38,6 +38,7 @@ function card(c) {
   a.setAttribute("aria-label", `${c.title} — ${c.description}`);
 
   const rest = (c.tags || []).slice(1);
+  const p = progressFor(c.slug);
 
   a.innerHTML = `
     <div class="card-top">
@@ -47,13 +48,40 @@ function card(c) {
     <h2>${esc(c.title)}</h2>
     <p>${esc(c.description || "")}</p>
     ${rest.length ? `<div class="chips">${rest.map((t) => `<span class="chip">${esc(label(t))}</span>`).join("")}</div>` : ""}
+    ${p ? progressHTML(p) : ""}
     <div class="card-meta">
       ${c.level ? `<span>${esc(c.level)}</span><span class="dot">·</span>` : ""}
       ${c.duration ? `<span>${esc(c.duration)}</span>` : ""}
-      <span class="go">open →</span>
+      <span class="go">${p && p.done >= p.total ? "revisit →" : p ? "continue →" : "open →"}</span>
     </div>
   `;
   return a;
+}
+
+/* ---------- progress ---------- */
+
+// progress.js may not be loaded (or localStorage may be unavailable) — the hub
+// has to render fine either way.
+const SAVED = typeof window.Progress === "object" ? window.Progress.all() : {};
+
+function progressFor(slug) {
+  const p = SAVED[slug];
+  if (!p || !p.total || !p.done) return null; // nothing started, show nothing
+  return p;
+}
+
+function progressHTML(p) {
+  const pct = Math.round((p.done / p.total) * 100);
+  const complete = p.done >= p.total;
+  return `
+    <div class="progress ${complete ? "is-complete" : ""}">
+      <div class="progress-track">
+        <div class="progress-fill" style="width:${pct}%"></div>
+      </div>
+      <span class="progress-label">
+        ${complete ? "✓ complete" : `${p.done} of ${p.total}`}
+      </span>
+    </div>`;
 }
 
 function esc(s) {
@@ -108,6 +136,36 @@ function apply(cat, pushHash) {
   }
 }
 
+/* Progress lives only in this browser, so offer a way to clear it. Rendered
+   only once there's something to clear. Uses an inline confirm step rather
+   than window.confirm, which is heavier than this decision deserves. */
+function mountReset() {
+  const p = document.createElement("p");
+  p.className = "fine reset-row";
+  p.innerHTML = `Your progress is stored in this browser only. <button type="button" id="resetBtn">Clear it</button>`;
+  document.querySelector("footer").appendChild(p);
+
+  const btn = document.getElementById("resetBtn");
+  let armed = false;
+
+  btn.addEventListener("click", () => {
+    if (!armed) {
+      armed = true;
+      btn.textContent = "Really clear it?";
+      btn.classList.add("armed");
+      setTimeout(() => {
+        if (!armed) return;
+        armed = false;
+        btn.textContent = "Clear it";
+        btn.classList.remove("armed");
+      }, 4000);
+      return;
+    }
+    window.Progress.resetAll();
+    location.reload();
+  });
+}
+
 /* ---------- boot ---------- */
 
 function init() {
@@ -126,15 +184,19 @@ function init() {
   apply(known.has(fromHash) ? fromHash : "all", false);
 
   const hands = courses.filter((c) => (c.tags || []).includes("hands-on")).length;
+  const started = courses.filter((c) => progressFor(c.slug)).length;
   document.getElementById("stats").innerHTML = [
     `${courses.length} course${courses.length === 1 ? "" : "s"}`,
     hands ? `${hands} hands-on` : null,
+    started ? `${started} in progress` : null,
     "runs offline",
     "no signup"
   ]
     .filter(Boolean)
     .map((s) => `<span>${esc(s)}</span>`)
     .join("");
+
+  if (started) mountReset();
 
   const link = document.getElementById("repoLink");
   if (REPO_URL) link.href = REPO_URL;

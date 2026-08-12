@@ -57,11 +57,26 @@ descriptive. Any images or data files the course needs live in that same folder.
 | `status` | `live` shows it; `draft` hides it from the hub while keeping the file in the repo. |
 | `order` | Optional. Lower sorts first, default `100`. Only add it if you want to override alphabetical order. |
 
-**3. Add the back-to-hub link** as the last line before `</body>`:
+**3. Add the shared chrome.** In the `<head>`, before your own script:
+
+```html
+<script src="../../assets/progress.js"></script>
+```
+
+and as the last line before `</body>`:
 
 ```html
 <script src="../../assets/course-nav.js"></script>
 ```
+
+Then, wherever your course recomputes how many steps are finished, report it:
+
+```js
+Progress.report(doneCount, totalCount);
+```
+
+That one call is what puts a progress bar on the course's card. Skip it if the
+course isn't step-based — the card just won't show a bar.
 
 Then commit and push. CI regenerates `data/courses.js` from your metadata,
 commits it back, and Pages redeploys — the card appears on its own.
@@ -87,6 +102,7 @@ assets/
   hub.css               landing page styles
   hub.js                renders the grid from the registry
   course-nav.js         injects the back-to-hub pill into any course
+  progress.js           shared, persistent progress (localStorage)
 data/courses.js         GENERATED registry the hub reads — don't hand-edit
 scripts/
   build-registry.mjs    course files -> data/courses.js
@@ -100,6 +116,25 @@ scripts/
 |---|---|
 | `npm run build:registry` | Rewrites `data/courses.js` from the course metadata. |
 | `npm run check:registry` | Exits non-zero if the registry is stale. This is what PR CI runs. |
+
+### Progress tracking
+
+`assets/progress.js` does two jobs.
+
+It provides `window.Progress`, which courses call to report how far along you
+are, and the hub reads to draw the bar on each card. Nothing leaves your
+browser — it's all `localStorage`, keyed under `ulearn:`. The footer offers a
+one-click reset once there's anything to clear.
+
+It also provides `window.storage`, a promise-based key/value store. Several
+courses were written against that API before this repo existed, but no browser
+implements it, so their saves were disappearing into a `catch` block and
+progress was lost on every refresh. Defining it centrally fixed those courses
+without touching their logic.
+
+The CI/CD Sandbox has no progress bar on purpose: it's a one-sitting simulator
+rather than a course with discrete steps, so there's nothing meaningful to
+count.
 
 ### A note on styling
 

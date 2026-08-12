@@ -16,6 +16,8 @@
 <meta name="course:icon"        content="🗄️">
 <meta name="course:status"      content="live">
 
+<script src="../../assets/progress.js"></script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -516,12 +518,24 @@ let db = null;
 let currentDay = 0;
 const doneDays = new Set();
 
+async function loadDone(){
+  try{
+    const r = await window.storage.get('sql-lab-progress');
+    if(r && r.value) JSON.parse(r.value).forEach(id => doneDays.add(id));
+  }catch(e){ /* no saved progress yet */ }
+}
+async function saveDone(){
+  try{ await window.storage.set('sql-lab-progress', JSON.stringify([...doneDays])); }
+  catch(e){ console.error('save failed', e); }
+}
+
 function initEditors(){}
 
 async function boot(){
   const SQL = await initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}` });
   db = new SQL.Database();
   db.run(SCHEMA_SQL);
+  await loadDone();
   document.getElementById('loadingScreen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   renderSidebar();
@@ -529,6 +543,7 @@ async function boot(){
 }
 
 function renderSidebar(){
+  Progress.report(doneDays.size, DAYS.length);
   const list = document.getElementById('dayList');
   list.innerHTML = '';
   DAYS.forEach(d => {
@@ -599,6 +614,7 @@ function renderDay(id){
   main.appendChild(markCard);
   document.getElementById('markDoneBtn').onclick = () => {
     doneDays.add(day.id);
+    saveDone();
     renderSidebar();
     document.getElementById('markDoneBtn').textContent = 'Marked complete ✓';
   };

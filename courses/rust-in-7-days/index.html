@@ -16,6 +16,8 @@
 <meta name="course:icon"        content="🦀">
 <meta name="course:status"      content="live">
 
+<script src="../../assets/progress.js"></script>
+
 <style>
   :root{
     --bg: #14120f;
@@ -591,6 +593,7 @@ function renderProgressBar(){
     track.appendChild(seg);
   });
   document.getElementById('progressLabel').textContent = `${completedCount()} / ${DAYS.length} days complete`;
+  Progress.report(completedCount(), DAYS.length);
 }
 
 function renderDay(){

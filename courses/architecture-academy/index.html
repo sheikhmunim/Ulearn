@@ -16,6 +16,8 @@
 <meta name="course:icon"        content="📐">
 <meta name="course:status"      content="live">
 
+<script src="../../assets/progress.js"></script>
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
@@ -502,6 +504,7 @@ function renderSidebar(){
     nav.appendChild(li);
   });
   const done = DAYS.filter((_,i)=>isDayComplete(i)).length;
+  Progress.report(done, DAYS.length);
   document.getElementById('titleblock').innerHTML = `
     <div class="row"><span>PROJECT</span><b>Software Architecture</b></div>
     <div class="row"><span>SHEETS</span><b>${done} / ${DAYS.length} complete</b></div>
