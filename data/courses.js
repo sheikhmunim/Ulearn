@@ -7,6 +7,20 @@
  */
 window.COURSES = [
   {
+    slug: "github-actions-lab",
+    href: "courses/github-actions-lab/",
+    title: "Actions Lab",
+    description: "Seven hands-on levels on GitHub Actions — assemble real workflow YAML, then watch a simulated runner execute it line by line.",
+    tags: ["devops", "github-actions", "hands-on"],
+    level: "intermediate",
+    duration: "~2 hours",
+    type: "lab",
+    accent: "#3FB950",
+    icon: "⚡",
+    status: "live",
+    order: 100
+  },
+  {
     slug: "architecture-academy",
     href: "courses/architecture-academy/",
     title: "Blueprint",

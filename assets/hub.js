@@ -13,7 +13,9 @@ const LABELS = {
   "ci-cd": "CI/CD",
   "sql": "SQL",
   "devops": "DevOps",
-  "api": "APIs"
+  "api": "APIs",
+  "github-actions": "GitHub Actions",
+  "ddd": "DDD"
 };
 
 const label = (t) =>
