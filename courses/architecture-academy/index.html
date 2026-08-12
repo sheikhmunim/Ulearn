@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blueprint — 7 Day Software Architecture Studio</title>
+
+<!-- course registry metadata — read by scripts/build-registry.mjs -->
+<meta name="course:title"       content="Blueprint">
+<meta name="course:description" content="A seven day studio on software architecture — layers and monoliths through microservices, event-driven systems, DDD and clean architecture.">
+<meta name="course:tags"        content="systems,architecture,design">
+<meta name="course:level"       content="advanced">
+<meta name="course:duration"    content="7 days">
+<meta name="course:type"        content="course">
+<meta name="course:accent"      content="#6FD4E0">
+<meta name="course:icon"        content="📐">
+<meta name="course:status"      content="live">
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --ink-navy:#0F1B2E;
+    --ink-navy-2:#132542;
+    --blueprint-cyan:#6FD4E0;
+    --blueprint-line:#2E4A6B;
+    --paper:#F0EDE4;
+    --graphite:#8FA3BE;
+    --amber:#E8A94C;
+    --rust:#C4593B;
+    --grid-line: rgba(111,212,224,0.07);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink-navy);
+    color:var(--paper);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif; margin:0;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  a{color:var(--blueprint-cyan);}
+
+  /* ---- App shell ---- */
+  .app{ display:flex; min-height:100vh; }
+
+  /* ---- Sidebar ---- */
+  .sidebar{
+    width:270px; flex-shrink:0;
+    border-right:1px solid var(--blueprint-line);
+    padding:28px 18px;
+    display:flex; flex-direction:column;
+    position:sticky; top:0; height:100vh; overflow-y:auto;
+  }
+  .brand{ padding-bottom:22px; border-bottom:1px dashed var(--blueprint-line); margin-bottom:20px; }
+  .brand .eyebrow{ font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.14em; color:var(--blueprint-cyan); text-transform:uppercase; }
+  .brand h1{ font-size:22px; line-height:1.15; margin-top:6px; }
+  .brand .sub{ font-size:12.5px; color:var(--graphite); margin-top:8px; line-height:1.5; }
+
+  .daynav{ list-style:none; padding:0; margin:0; flex:1; }
+  .daynav li{ margin-bottom:6px; }
+  .daynav button{
+    width:100%; text-align:left; background:transparent; border:1px solid transparent;
+    color:var(--paper); padding:10px 10px; border-radius:2px; cursor:pointer;
+    display:flex; align-items:center; gap:10px; font-size:13.5px;
+    transition:border-color .15s, background .15s;
+  }
+  .daynav button:hover{ border-color:var(--blueprint-line); background:rgba(111,212,224,.04); }
+  .daynav button.active{ border-color:var(--blueprint-cyan); background:rgba(111,212,224,.08); }
+  .daynav .sheet-no{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--blueprint-cyan); width:34px; flex-shrink:0; }
+  .daynav .label{ flex:1; }
+  .daynav .label .t{ display:block; font-weight:500; }
+  .daynav .label .st{ display:block; font-size:10.5px; color:var(--graphite); margin-top:1px; }
+  .status-dot{ width:7px; height:7px; border-radius:50%; background:var(--blueprint-line); flex-shrink:0; }
+  .status-dot.done{ background:var(--amber); }
+
+  .titleblock{
+    margin-top:20px; border:1px solid var(--blueprint-line); font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--graphite);
+  }
+  .titleblock .row{ display:flex; justify-content:space-between; padding:6px 8px; border-bottom:1px solid var(--blueprint-line); }
+  .titleblock .row:last-child{ border-bottom:none; }
+  .titleblock .row b{ color:var(--paper); font-weight:500; }
+
+  /* ---- Main ---- */
+  .main{ flex:1; padding:36px 48px 80px; max-width:900px; }
+  .sheet-header{ border-bottom:1px solid var(--blueprint-line); padding-bottom:18px; margin-bottom:28px; }
+  .sheet-header .eyebrow{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--blueprint-cyan); letter-spacing:.12em; text-transform:uppercase; }
+  .sheet-header h2{ font-size:32px; margin-top:8px; }
+  .sheet-header .tagline{ color:var(--graphite); margin-top:8px; font-size:14.5px; max-width:640px; line-height:1.55; }
+
+  section.block{ margin-bottom:38px; }
+  .block-head{ display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+  .block-head .idx{ font-family:'JetBrains Mono',monospace; color:var(--blueprint-cyan); font-size:12px; }
+  .block-head h3{ font-size:18px; }
+
+  .concept-card{
+    border:1px solid var(--blueprint-line); border-radius:2px; padding:16px 18px; margin-bottom:12px;
+    background:rgba(111,212,224,.025);
+  }
+  .concept-card h4{ font-size:14.5px; color:var(--blueprint-cyan); margin-bottom:6px; font-weight:600; }
+  .concept-card p{ margin:0; font-size:13.8px; line-height:1.65; color:#DCD9CF; }
+  .concept-card p + p{ margin-top:8px; }
+
+  .example-box{
+    border:1px solid var(--blueprint-line); border-left:3px solid var(--amber);
+    background:var(--ink-navy-2); padding:18px 20px; border-radius:2px;
+  }
+  .example-box .tag{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--amber); text-transform:uppercase; letter-spacing:.1em; }
+  .example-box h4{ font-size:15px; margin:8px 0 10px; }
+  .example-box p{ font-size:13.8px; line-height:1.65; color:#DCD9CF; margin:0 0 10px; }
+  .example-box pre{
+    background:#0A1524; border:1px solid var(--blueprint-line); padding:12px 14px; border-radius:2px;
+    overflow-x:auto; font-size:12.3px; line-height:1.6; color:#B9E6EC; margin:10px 0;
+  }
+  .example-box .why{ border-top:1px dashed var(--blueprint-line); margin-top:12px; padding-top:10px; }
+  .example-box .why b{ color:var(--amber); }
+
+  /* quiz */
+  .quiz-q{ border:1px solid var(--blueprint-line); border-radius:2px; padding:16px 18px; margin-bottom:14px; }
+  .quiz-q .qn{ font-size:13.5px; font-weight:500; margin-bottom:12px; }
+  .quiz-q .qmeta{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--graphite); }
+  .opts{ list-style:none; padding:0; margin:0; }
+  .opts li{ margin-bottom:8px; }
+  .opt-btn{
+    width:100%; text-align:left; padding:9px 12px; border:1px solid var(--blueprint-line); background:transparent;
+    color:var(--paper); border-radius:2px; cursor:pointer; font-size:13.2px; font-family:'Inter',sans-serif;
+    transition:all .12s;
+  }
+  .opt-btn:hover{ border-color:var(--blueprint-cyan); }
+  .opt-btn.selected{ border-color:var(--blueprint-cyan); background:rgba(111,212,224,.08); }
+  .opt-btn.correct{ border-color:var(--amber); background:rgba(232,169,76,.12); color:var(--amber); }
+  .opt-btn.wrong{ border-color:var(--rust); background:rgba(196,89,59,.12); color:#E39C8A; }
+  .opt-btn:disabled{ cursor:default; }
+  .explain{ margin-top:10px; font-size:12.8px; color:var(--graphite); line-height:1.55; border-top:1px dashed var(--blueprint-line); padding-top:10px; display:none; }
+  .explain.show{ display:block; }
+
+  .quiz-summary{
+    border:1px solid var(--amber); border-radius:2px; padding:14px 18px; font-family:'JetBrains Mono',monospace;
+    font-size:13px; display:flex; justify-content:space-between; align-items:center; margin-top:8px;
+  }
+
+  .thinking-box{ border:1px solid var(--blueprint-line); border-radius:2px; padding:18px 20px; background:rgba(232,169,76,.02); }
+  .thinking-box .prompt{ font-size:13.8px; line-height:1.6; color:#DCD9CF; margin-bottom:12px; }
+  .thinking-box textarea{
+    width:100%; min-height:120px; background:#0A1524; border:1px solid var(--blueprint-line); color:var(--paper);
+    border-radius:2px; padding:12px; font-family:'Inter',sans-serif; font-size:13.3px; line-height:1.6; resize:vertical;
+  }
+  .thinking-actions{ display:flex; justify-content:space-between; align-items:center; margin-top:10px; }
+  .save-btn{
+    background:var(--amber); color:var(--ink-navy); border:none; padding:8px 16px; border-radius:2px;
+    font-weight:600; font-size:12.5px; cursor:pointer; font-family:'JetBrains Mono',monospace;
+  }
+  .save-btn:hover{ opacity:.88; }
+  .save-status{ font-size:11.5px; color:var(--graphite); font-family:'JetBrains Mono',monospace; }
+
+  .nav-footer{ display:flex; justify-content:space-between; margin-top:44px; padding-top:20px; border-top:1px solid var(--blueprint-line); }
+  .nav-footer button{
+    background:transparent; border:1px solid var(--blueprint-line); color:var(--paper); padding:10px 18px;
+    border-radius:2px; cursor:pointer; font-family:'JetBrains Mono',monospace; font-size:12px;
+  }
+  .nav-footer button:hover{ border-color:var(--blueprint-cyan); color:var(--blueprint-cyan); }
+  .nav-footer button:disabled{ opacity:.3; cursor:default; }
+
+  @media (max-width: 820px){
+    .app{ flex-direction:column; }
+    .sidebar{ width:100%; height:auto; position:relative; border-right:none; border-bottom:1px solid var(--blueprint-line); }
+    .main{ padding:28px 20px 60px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="eyebrow">Architect's Log · Sheet Set</div>
+      <h1>Blueprint</h1>
+      <div class="sub">Seven drafting sessions on software architecture, ground floor to penthouse.</div>
+    </div>
+    <ul class="daynav" id="daynav"></ul>
+    <div class="titleblock" id="titleblock"></div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+
+<script>
+/* ---------------------------------------------------------------
+   DATA
+--------------------------------------------------------------- */
+const DAYS = [
+{
+  title:"Foundations — What Architecture Actually Is",
+  stage:"Beginner",
+  tagline:"Before styles and patterns: what architecture is for, who it serves, and why the same system can be built ten different 'correct' ways.",
+  concepts:[
+    {h:"Architecture vs. Design", p:["Architecture is the set of decisions that are expensive to change later: how components are divided, how they communicate, where state lives, what runs where. Design is everything downstream of that — class shapes, function signatures, UI layout — decisions you can usually revise in an afternoon.", "A useful test: if reversing a decision means rewriting a large slice of the codebase or migrating live data, it was architectural. If it means editing one file, it was design."]},
+    {h:"Quality Attributes (the 'ilities')", p:["Architecture exists to satisfy non-functional requirements: scalability (handling growth), availability (uptime under failure), performance (latency/throughput), maintainability (cost of future change), security, and cost. Functional requirements tell you what the system does; quality attributes tell you how it must behave while doing it.", "These attributes usually trade off against each other. Optimizing hard for consistency often costs you availability. Optimizing for maintainability (many small services) often costs you performance (network hops) and operational simplicity."]},
+    {h:"Architectural Drivers", p:["A driver is any force that shapes a decision: a business goal ('launch in 6 weeks'), a constraint ('must run on-prem'), or a quality attribute with a measurable target ('p99 latency under 200ms at 10k rps'). Good architecture starts by making drivers explicit and ranked — you cannot design for 'fast, cheap, and scalable' all at once without knowing which one wins when they conflict."]},
+    {h:"Conway's Law", p:["'Organizations design systems that mirror their own communication structure.' If four teams own four separate codebases with no shared standup, your system will architecturally fracture into four services whether you planned that or not. This is why reorgs are architecture decisions in disguise."]}
+  ],
+  example:{
+    tag:"Worked Example",
+    h:"Same product, two 'correct' architectures",
+    body:["Imagine a small team building an invoicing SaaS for freelancers. Two architects independently review the same requirements."],
+    code:`Architect A — optimizes for time-to-market:
+  Single Rails/Django monolith
+  One Postgres database
+  Deploys as one unit, one on-call rotation
+
+Architect B — optimizes for anticipated scale:
+  Separate "billing" and "invoicing" services
+  Each with its own datastore
+  Communicate over an internal API + message queue`,
+    why:["Both are defensible. The freelancer-invoicing startup with 3 engineers and no paying customers yet should almost always pick Architect A — the driver is speed of iteration, not scale it doesn't have yet. Architect B's design pays a real tax (network calls, deployment complexity, distributed debugging) for a scale problem that may never arrive. The lesson: architecture quality is judged against drivers, not against an abstract 'best practice' league table."]
+  },
+  quiz:[
+    {q:"Which of these is most clearly an *architectural* decision rather than a design decision?", opts:["Naming a variable `userList` instead of `users`","Choosing whether the system is one deployable unit or many independently deployable services","Deciding to use a `for` loop instead of `.map()`","Choosing a CSS class name"], correct:1, why:"The unit-of-deployment decision is expensive to reverse — it touches infrastructure, team boundaries, and data ownership. The others are cheap to change."},
+    {q:"A team is told the product must 'never lose an order, even during a data center outage.' Which quality attribute is the dominant driver?", opts:["Usability","Availability / durability","Code readability","Aesthetic consistency"], correct:1, why:"'Never lose data during an outage' is a durability/availability requirement — it will drive decisions about replication and failover."},
+    {q:"Why do quality attributes typically trade off against each other?", opts:["They don't — good architecture satisfies all of them fully","Because engineers are lazy","Because each attribute usually consumes the same limited resources (time, complexity budget, latency budget)","Because product managers disagree with engineers"], correct:2, why:"Every attribute costs something — more replicas cost money and consistency complexity, more layers cost latency and maintainability. They compete for the same budget."},
+    {q:"According to Conway's Law, what shapes a system's architecture, whether intended or not?", opts:["The programming language chosen","The organization's communication structure","The cloud provider","The number of unit tests"], correct:1, why:"Conway observed that system boundaries tend to mirror team boundaries, because communication overhead across teams pushes toward separate modules/services."},
+    {q:"A startup with 2 engineers and no users picks a 12-microservice architecture 'to be scalable later.' What's the most likely critique?", opts:["Microservices are always wrong","It ignores the actual driver (speed of iteration with a tiny team) in favor of a hypothetical future driver (scale)","It will definitely fail","Microservices are only for startups"], correct:1, why:"Architecture should serve the current, ranked drivers. Premature optimization for scale that doesn't exist yet usually just adds operational drag."}
+  ],
+  thinking:"Pick a real system you use or have built (an app on your phone, a project at work, VxLab's robot stack — anything). Write down 3 quality attributes it clearly optimizes for, and one quality attribute it visibly sacrifices as a result. What driver do you think forced that trade-off?"
+},
+{
+  title:"Structural Patterns — Layers, Monoliths & MV*",
+  stage:"Beginner → Intermediate",
+  tagline:"The oldest and still most common shape: dividing a system into layers, and the family of patterns that separate what the user sees from what the system knows.",
+  concepts:[
+    {h:"Layered (N-Tier) Architecture", p:["Organize the system into horizontal layers — typically Presentation, Business Logic, Data Access, and Database — where each layer only talks to the layer directly beneath it. This enforces a one-directional dependency flow: UI depends on business logic, business logic depends on data access, but never the reverse.", "Strength: easy to reason about, easy to onboard new engineers, natural fit for CRUD-heavy apps. Weakness: layers tend to become 'anemic' pass-through code, and a change to a core entity can ripple through every layer."]},
+    {h:"Monolith vs. Modular Monolith", p:["A monolith is one deployable unit. That word has picked up a stigma, but a well-modularized monolith — internally split into clear packages/modules with enforced boundaries, sharing one deployment and one database — is often the *right* choice: no network calls between modules, one transaction for consistency, one thing to deploy and monitor.", "The modular monolith is frequently the best stepping stone: build clean internal boundaries first; only extract a module into a real microservice once you have evidence (team size, independent scaling needs) that justifies the operational cost."]},
+    {h:"Client-Server", p:["The foundational split: a client (requests, renders) and a server (owns data, enforces rules). Nearly every architecture on this course is a refinement of this idea — even microservices are just many small servers, and even a REST API is a client-server contract with a shape."]},
+    {h:"MVC / MVP / MVVM", p:["These are presentation-layer patterns for separating 'what data looks like' (Model) from 'what's on screen' (View) from 'who coordinates the two.' MVC: a Controller receives input and updates the Model, the View observes the Model. MVP: a Presenter mediates fully, the View is passive and dumb. MVVM: a ViewModel exposes bindable state, and the View binds to it declaratively (this is why React/Vue/SwiftUI-style frameworks lean MVVM-ish).", "The point of all three is the same: don't let UI code and business rules become tangled, because UI changes constantly and business rules should not have to change with it."]}
+  ],
+  example:{
+    tag:"Worked Example",
+    h:"An N-tier layering for a job-tracker app",
+    body:["Think of Munim's JobU tracker. A layered breakdown might look like:"],
+    code:`[ React UI ]              <- Presentation
+      |
+[ JobService (JS/TS) ]    <- Business logic
+      |  validates, applies rules
+      |  e.g. "can't mark Rejected -> Interviewing"
+[ SupabaseRepository ]    <- Data access
+      |  translates JobService calls into queries
+[ Postgres (Supabase) ]   <- Storage`,
+    why:["The rule 'can't move a job backward from Rejected to Interviewing' lives in JobService, not scattered across UI components. If the storage layer swaps from Supabase to a custom API later, only the Repository layer changes — the business rule and the UI never notice. That's the entire payoff of layering: isolating the *reason* something changes to a single place."]
+  },
+  quiz:[
+    {q:"In a strict layered architecture, which direction should dependencies flow?", opts:["Any layer can call any other layer freely","Only downward — each layer depends only on the layer beneath it","Only upward, from database to UI","Layers shouldn't depend on each other at all"], correct:1, why:"Strict layering enforces a one-directional dependency: Presentation → Business Logic → Data Access → Database."},
+    {q:"What is a 'modular monolith'?", opts:["A monolith split across multiple databases","A single deployable unit with enforced internal module boundaries","A microservice disguised as a monolith","A monolith with no internal structure at all"], correct:1, why:"It's one deployment unit, but internally organized into clearly bounded modules — giving structure without network/deployment overhead."},
+    {q:"Why might a team deliberately choose a modular monolith over microservices at an early stage?", opts:["Because microservices are illegal for startups","Because it avoids network calls between modules and needs only one deployment/monitoring setup, while still keeping code organized","Because monoliths always scale better","Because databases can't be modular"], correct:1, why:"You get code organization benefits without paying the distributed-systems tax until you actually need to scale teams or components independently."},
+    {q:"In MVVM, what does the View typically do?", opts:["Directly executes SQL queries","Binds declaratively to state exposed by the ViewModel","Owns all business logic","Talks directly to the database, bypassing the ViewModel"], correct:1, why:"MVVM's View is a thin binding layer over ViewModel-exposed state — this is the pattern behind most modern reactive UI frameworks."},
+    {q:"What's the main weakness of layered architecture the text calls out?", opts:["It's impossible to test","Layers can become thin pass-through code, and a core entity change can ripple through every layer","It only works for microservices","It requires a NoSQL database"], correct:1, why:"Layering trades some flexibility for rigidity — a shared entity's shape change often forces edits across every layer that touches it."}
+  ],
+  thinking:"Take any app you've built or maintained. Sketch its layers on paper (even mentally): Presentation, Business Logic, Data Access. Is there a place where business logic has leaked into the UI layer (e.g. validation duplicated in a React component)? What would it take to move it down a layer?"
+},
+{
+  title:"Design Principles & Patterns — SOLID and the GoF Toolkit",
+  stage:"Intermediate",
+  tagline:"Zooming from system-level shape down to the object/module level: the principles and reusable patterns that keep individual components honest.",
+  concepts:[
+    {h:"SOLID, briefly", p:["Single Responsibility — a module should have one reason to change. Open/Closed — open for extension, closed for modification (add new behavior without editing existing tested code). Liskov Substitution — a subtype must be usable anywhere its base type is expected without breaking correctness. Interface Segregation — many small, specific interfaces beat one fat interface clients don't fully need. Dependency Inversion — depend on abstractions, not concrete implementations, and let concrete details be injected in.", "These aren't laws, they're heuristics for keeping a codebase changeable. Violating one isn't automatically wrong — it's a signal to ask why, and whether the trade-off is worth it."]},
+    {h:"DRY, KISS, YAGNI", p:["Don't Repeat Yourself targets *knowledge* duplication, not just code that looks similar — two pieces of code that happen to look alike but represent different business rules should NOT be merged just because they're similar today. Keep It Simple avoids solving imagined problems with clever abstractions. You Aren't Gonna Need It resists building flexibility for a future requirement that may never arrive — this is the object-level sibling of the 'architectural drivers' idea from Day 1."]},
+    {h:"Gang-of-Four Pattern Families", p:["Creational patterns (Factory, Builder, Singleton) control *how objects are constructed*, decoupling client code from concrete classes. Structural patterns (Adapter, Decorator, Facade) control *how objects are composed* into larger structures. Behavioral patterns (Strategy, Observer, Command) control *how objects communicate and share responsibility* for a behavior.", "You rarely need to memorize all 23 — what matters is recognizing the shape of a recurring problem (e.g. 'I need to swap an algorithm at runtime' → Strategy; 'many objects need to react when one object changes' → Observer)."]}
+  ],
+  example:{
+    tag:"Worked Example",
+    h:"Refactoring an SRP/OCP violation with Strategy",
+    body:["A `PaymentProcessor` class that branches on payment type is a classic Open/Closed violation — every new payment method means editing tested code."],
+    code:`// Before: violates OCP — editing this class for every new method
+class PaymentProcessor {
+  process(type, amount) {
+    if (type === "card") { /* ... */ }
+    else if (type === "paypal") { /* ... */ }
+    else if (type === "crypto") { /* ... */ } // <- had to edit here
+  }
+}
+
+// After: Strategy pattern — new methods are additions, not edits
+interface PaymentStrategy { pay(amount: number): void }
+class CardPayment implements PaymentStrategy { pay(a){ /*...*/ } }
+class PaypalPayment implements PaymentStrategy { pay(a){ /*...*/ } }
+class CryptoPayment implements PaymentStrategy { pay(a){ /*...*/ } } // new file, zero edits elsewhere
+
+class PaymentProcessor {
+  constructor(private strategy: PaymentStrategy) {}
+  process(amount) { this.strategy.pay(amount); }
+}`,
+    why:["Adding a new payment method now means writing one new class, not editing a tested, shipped one. This is Open/Closed and Dependency Inversion working together: `PaymentProcessor` depends on the `PaymentStrategy` abstraction, and concrete strategies are injected in — exactly the pattern that later makes microservice and plugin architectures possible."]
+  },
+  quiz:[
+    {q:"What does the 'S' in SOLID (Single Responsibility) actually mean?", opts:["A class should only have one method","A module should have only one reason to change","A file should be under 50 lines","A class should only be used once"], correct:1, why:"SRP is about reasons to change, not line count or method count — a class handling both billing rules and email formatting has two reasons to change."},
+    {q:"The Open/Closed Principle says a module should be:", opts:["Open for modification, closed for extension","Closed for both modification and extension","Open for extension, closed for modification","Open for both modification and extension"], correct:2, why:"You should be able to add new behavior (extension) without editing existing, tested code (modification)."},
+    {q:"Which GoF pattern is the natural fit for 'swap an algorithm at runtime without changing the calling code'?", opts:["Singleton","Strategy","Observer","Facade"], correct:1, why:"Strategy encapsulates interchangeable algorithms behind a common interface, exactly matching this need."},
+    {q:"DRY (Don't Repeat Yourself) is really about avoiding duplication of:", opts:["Whitespace","Knowledge / business rules — not just code that merely looks similar","Variable names","Comments"], correct:1, why:"Two similar-looking code blocks that represent *different* business rules should stay separate — merging them couples unrelated concerns just because they look alike today."},
+    {q:"YAGNI ('You Aren't Gonna Need It') is the object-level sibling of which Day 1 idea?", opts:["Conway's Law","Designing only for confirmed architectural drivers, not hypothetical future ones","Client-Server separation","MVVM"], correct:1, why:"Both YAGNI and 'design for your actual drivers' resist building for imagined future requirements at the cost of present complexity."}
+  ],
+  thinking:"Find a class or function you've written that has grown a pile of `if/else` or `switch` branches over time. Which GoF pattern would remove the branching? Sketch (in words, no need to code it) what the refactor would look like."
+},
+{
+  title:"Distributed Architectures — Microservices & SOA",
+  stage:"Intermediate → Advanced",
+  tagline:"What actually changes when you split one deployable into many — service boundaries, contracts, and the new failure modes you inherit.",
+  concepts:[
+    {h:"Microservices vs. the Monolith, honestly", p:["Microservices trade simplicity for independent deployability and scalability: each service can be built, deployed, scaled, and even rewritten independently. The cost is real: network calls replace function calls (latency + failure modes), transactions that used to be one database commit now span services (needing sagas, Day 5), and you need service discovery, observability, and a much heavier ops story.", "Rule of thumb: microservices solve organizational and scaling problems, not code-quality problems. If your real problem is messy code inside one app, splitting it into services usually just gives you messy code across a network — a modular monolith fixes that problem more cheaply."]},
+    {h:"Bounded Contexts as Service Boundaries", p:["The single highest-leverage skill in microservice design is drawing service boundaries around bounded contexts (a Domain-Driven Design concept, covered fully on Day 7) rather than around technical layers. A boundary drawn around 'Orders' as a complete vertical slice (its own API, own data) is durable. A boundary drawn around 'the database access layer' as its own service is usually a mistake — it creates a chatty, tightly-coupled distributed monolith."]},
+    {h:"API Design: REST vs gRPC vs GraphQL", p:["REST models resources over HTTP verbs — simple, cacheable, universally understood, good default for public/external APIs. gRPC uses HTTP/2 and Protocol Buffers for fast, strongly-typed, binary communication — the default for internal service-to-service calls where performance and strict contracts matter. GraphQL lets clients request exactly the fields they need in one round trip — strong for complex UIs pulling from many sources, weaker for simple CRUD or when you need HTTP-level caching."]},
+    {h:"API Gateway & Service Discovery", p:["An API Gateway is the single entry point clients talk to — it routes to the right internal service, handles auth, rate limiting, and request shaping, so internal services don't each reimplement that. Service discovery (e.g. Consul, Kubernetes DNS) lets services find each other's current network location, since in a dynamic cluster IPs change constantly as instances scale up/down."]}
+  ],
+  example:{
+    tag:"Worked Example",
+    h:"Decomposing a monolithic e-commerce app",
+    body:["A monolith with Orders, Inventory, and Notifications all in one codebase and one database is split by bounded context, not by technical layer:"],
+    code:`WRONG split (technical layers as services):
+  auth-service, db-service, ui-service     <- chatty, tightly coupled
+
+RIGHT split (bounded contexts as services):
+  order-service     (owns order lifecycle + its own DB)
+  inventory-service (owns stock levels + its own DB)
+  notification-service (owns email/SMS sending)
+
+  order-service -> calls inventory-service (gRPC, internal)
+  order-service -> publishes "OrderPlaced" event -> notification-service consumes it`,
+    why:["Each right-hand service can be deployed, scaled, and even reassigned to a different team independently, because each owns a full vertical slice of behavior and its own data. Notice `order-service` doesn't call `notification-service` directly and synchronously — it publishes an event instead, which is the Day 5 topic (event-driven architecture) solving the 'don't let a slow email server block checkout' problem."]
+  },
+  quiz:[
+    {q:"What problem do microservices primarily solve?", opts:["Making code easier to read","Independent deployability/scalability across teams — an organizational and scaling problem, not a code-quality one","Eliminating the need for tests","Removing the need for a database"], correct:1, why:"Microservices trade complexity for independent deployability and scaling. Messy code should be fixed by refactoring, not by adding a network boundary."},
+    {q:"What's the recommended basis for drawing a microservice boundary?", opts:["Technical layer (e.g. 'the database layer becomes a service')","A bounded context — a complete vertical slice of business capability","Alphabetical order of class names","File size"], correct:1, why:"Boundaries drawn around technical layers create chatty, tightly-coupled 'distributed monoliths.' Bounded contexts create durable, independently-ownable services."},
+    {q:"Which API style is generally the default for internal, performance-sensitive service-to-service calls?", opts:["GraphQL","gRPC","SOAP","FTP"], correct:1, why:"gRPC's binary Protobuf format over HTTP/2 is faster and more strictly typed, making it the common choice for internal calls."},
+    {q:"What is an API Gateway's job?", opts:["Storing all application data","Acting as the single entry point for clients, handling routing, auth, and rate limiting so services don't each reimplement it","Compiling the frontend code","Running database migrations"], correct:1, why:"The Gateway centralizes cross-cutting concerns (auth, routing, rate limiting) at the edge of the system."},
+    {q:"Why does service discovery matter in a microservices deployment?", opts:["Because service network locations change dynamically as instances scale, and services need to find each other's current address","Because it makes code compile faster","Because it replaces the need for an API Gateway","Because DNS doesn't exist in the cloud"], correct:0, why:"In an elastic cluster, IPs/ports change constantly — service discovery keeps a live directory so callers always reach a healthy instance."}
+  ],
+  thinking:"If you split VxLab's robot control stack (or any project of yours) into services, where would the bounded-context lines actually fall? Name 2-3 services and, for each, one piece of data it alone should own."
+},
+{
+  title:"Event-Driven & Data Patterns",
+  stage:"Advanced",
+  tagline:"Moving from 'call and wait' to 'announce and react' — the architectures that let distributed pieces stay loosely coupled in time.",
+  concepts:[
+    {h:"Event-Driven Architecture & Pub/Sub", p:["Instead of Service A calling Service B directly and waiting for a response, A publishes an event ('OrderPlaced') to a broker, and any number of subscribers (Notifications, Analytics, Fulfillment) react independently, without A knowing or caring who's listening. This decouples services in both space (they don't need each other's address) and time (a subscriber can be down and catch up later).", "The cost: you trade easy-to-trace call stacks for eventual consistency and harder debugging — tracing 'why did this side effect happen' across a chain of events needs proper observability (distributed tracing, correlation IDs)."]},
+    {h:"Message Brokers: Queues vs. Logs", p:["A queue (RabbitMQ, SQS) typically delivers each message to one consumer and removes it once processed — good for task distribution/work queues. A distributed log (Kafka) retains an ordered, replayable stream that multiple independent consumer groups can read at their own pace — good when multiple different services need the same event history, and when you want to be able to replay history (e.g. rebuild a cache from scratch)."]},
+    {h:"CQRS — Command Query Responsibility Segregation", p:["Split the model used to write data (Commands: 'PlaceOrder') from the model used to read data (Queries: 'GetOrderSummary'). This lets you optimize each independently — a heavily normalized write model for correctness, and a denormalized, cache-friendly read model for fast queries. It's most valuable when read and write load patterns are very different (e.g. 1000:1 read-to-write ratio), and adds real complexity, so it's not a default — it's a targeted tool."]},
+    {h:"Event Sourcing", p:["Instead of storing only the current state of an entity, store the full sequence of events that produced it ('OrderCreated', 'ItemAdded', 'OrderShipped'), and derive current state by replaying them. This gives you a perfect audit trail and the ability to reconstruct state 'as of' any point in time, at the cost of more complex queries (you often pair it with CQRS's read model) and needing to think carefully about event schema evolution."]},
+    {h:"Saga Pattern", p:["When a business transaction spans multiple services (place order → reserve inventory → charge payment), you can't use one database transaction. A Saga runs the steps as a sequence of local transactions, each publishing an event that triggers the next step, and defines explicit *compensating actions* (e.g. 'release inventory') to undo prior steps if a later one fails."]}
+  ],
+  example:{
+    tag:"Worked Example",
+    h:"An order-placement Saga",
+    body:["Order → Inventory → Payment, each a separate service with its own database, coordinated by choreographed events:"],
+    code:`1. order-service: creates Order(status=PENDING), emits OrderCreated
+2. inventory-service: hears OrderCreated, reserves stock, emits StockReserved
+3. payment-service: hears StockReserved, charges card
+     - success -> emits PaymentSucceeded
+     - failure -> emits PaymentFailed
+4. order-service: hears PaymentSucceeded -> Order(status=CONFIRMED)
+              or  hears PaymentFailed -> Order(status=CANCELLED),
+                  emits OrderCancelled
+5. inventory-service: hears OrderCancelled -> compensating action:
+              releases the previously reserved stock`,
+    why:["No single service ever holds a lock across the whole flow — each step commits locally and moves on. The compensating action in step 5 is what makes this safe: because inventory reserved stock optimistically in step 2, it must know how to *undo* that reservation if payment later fails. This compensating-action design is the entire discipline of the Saga pattern."]
+  },
+  quiz:[
+    {q:"What does event-driven architecture decouple services in?", opts:["Only in space (network address)","Only in time (execution timing)","Both space and time — publishers don't need to know subscribers' addresses or be online at the same moment","Neither — it tightly couples services"], correct:2, why:"Pub/sub removes both the need to know the subscriber's address (space) and the need for both sides to be active simultaneously (time)."},
+    {q:"When is Kafka-style log-based messaging preferred over a simple task queue?", opts:["When only one consumer will ever exist and messages should be deleted immediately after use","When multiple independent consumer groups need the same event history, or you want replay capability","When you never want to retain messages","When messages must be unordered"], correct:1, why:"Logs retain an ordered, replayable stream readable by multiple independent consumer groups — queues are built for single-consumer task distribution."},
+    {q:"CQRS is most valuable when:", opts:["Read and write load patterns are very similar","Read and write load patterns differ significantly, e.g. far more reads than writes","The system has no database","You want to avoid ever using a cache"], correct:1, why:"CQRS's payoff — independently optimized read/write models — is highest when their access patterns diverge a lot, e.g. a 1000:1 read:write ratio."},
+    {q:"In Event Sourcing, what is stored as the source of truth?", opts:["Only the current state snapshot","The full ordered sequence of events that produced the current state","Nothing — state is recomputed from an external API each time","A single JSON blob overwritten on each change"], correct:1, why:"Event Sourcing stores the events themselves; current state is a derived/replayed projection of that event log."},
+    {q:"What is a 'compensating action' in the Saga pattern for?", opts:["Speeding up the happy path","Undoing the effect of a prior local transaction if a later step in the saga fails","Compressing event payloads","Logging errors to a file"], correct:1, why:"Since sagas can't roll back a distributed transaction atomically, each step defines an explicit compensating action to reverse its own committed effect if the overall flow later fails."}
+  ],
+  thinking:"Think of a multi-step process in a system you know (e.g. 'user signs up → account created → welcome email sent → trial activated'). If step 3 failed, what would need to happen to steps 1 and 2 to keep the system consistent? Try sketching the compensating actions."
+},
+{
+  title:"Scalability & Distributed Systems Theory",
+  stage:"Advanced",
+  tagline:"The physics of distributed systems: what you're mathematically allowed to have at the same time, and the practical levers for scale.",
+  concepts:[
+    {h:"CAP Theorem", p:["In the presence of a network Partition, a distributed system must choose between Consistency (every read sees the latest write) and Availability (every request gets a response, even if it might be stale). You cannot have both perfectly during a partition — this isn't an engineering limitation, it's a mathematical result.", "In practice partitions are rare but real, so the more useful everyday framing is PACELC: even without a Partition, you still trade Latency against Consistency. Systems like Postgres (single primary) lean consistent; systems like DynamoDB or Cassandra (by default) lean available."]},
+    {h:"Consistency Models", p:["Strong consistency: reads always reflect the latest write (simple to reason about, costly to scale globally). Eventual consistency: replicas converge to the same value *eventually*, but a read right after a write might return stale data (higher availability/performance, harder to reason about). Causal consistency sits between: operations that are causally related are seen in order by everyone, unrelated ones may not be."]},
+    {h:"Caching Strategies", p:["Cache-aside: the app checks the cache first, and on a miss reads from the DB and populates the cache — simple, but the first request after invalidation is always slow. Write-through: writes go to the cache and DB together, keeping them in sync at write cost. Write-behind: writes hit the cache immediately and are flushed to the DB asynchronously — fast, but risks data loss if the cache dies before flushing.", "Cache invalidation is famously one of the two hard problems in computer science — stale cache data causes some of the gnarliest production bugs."]},
+    {h:"Load Balancing & Sharding", p:["Load balancers distribute incoming traffic across multiple instances (round-robin, least-connections, or consistent hashing for session affinity). Database sharding splits one large dataset horizontally across multiple database instances by a shard key (e.g. `user_id % N` or a range), so no single machine holds the whole dataset — at the cost of losing easy cross-shard joins and transactions."]},
+    {h:"Rate Limiting", p:["Protects a system from being overwhelmed by any single client, deliberately or accidentally. Common algorithms: token bucket (allows bursts up to a capacity, refills over time — usually the best default), fixed window (simple but allows a burst at window boundaries), sliding window (smoother, more expensive to compute)."]}
+  ],
+  example:{
+    tag:"Worked Example",
+    h:"Designing a URL shortener at scale",
+    body:["A classic system-design interview question, walked through against the concepts above:"],
+    code:`Write path:  POST /shorten {long_url}
+  -> generate short code (base62 counter or hash)
+  -> write to DB, shard by hash(short_code) across N DB nodes
+  -> write-through into cache (short_code -> long_url)
+
+Read path:   GET /:short_code
+  -> check cache first (cache-aside)
+  -> cache hit (~99% of traffic, reads >> writes)  -> 302 redirect, <5ms
+  -> cache miss -> read DB shard -> populate cache -> redirect
+
+Scale levers used:
+  - Sharded DB: no single node stores all URLs
+  - Cache: absorbs the vast majority of read traffic (reads >> writes here)
+  - Rate limiting on POST /shorten: prevents abuse from flooding writes
+  - Load balancer in front of stateless app servers: horizontal scale-out`,
+    why:["This system leans hard toward availability and eventual consistency deliberately: a short code being *slightly* stale in one cache replica for a second is a non-event, but the redirect being slow or unavailable is very visible to users. That's a conscious CAP/PACELC trade, not an accident — it mirrors why the read-heavy path gets nearly all the optimization budget."]
+  },
+  quiz:[
+    {q:"According to CAP theorem, during a network partition, a system must choose between:", opts:["Speed and security","Consistency and Availability","Cost and scalability","Frontend and backend"], correct:1, why:"CAP says: during a partition, you can't have both perfect consistency and perfect availability — you must pick which one degrades."},
+    {q:"What does PACELC add to CAP?", opts:["Nothing, it's the same theorem renamed","That even without a Partition, systems still trade Latency against Consistency (Else)","That Partitions never actually happen","That Consistency is always more important than Availability"], correct:1, why:"PACELC extends CAP: Partition -> Availability/Consistency tradeoff; Else (normal operation) -> Latency/Consistency tradeoff."},
+    {q:"In 'cache-aside', what happens on a cache miss?", opts:["The request fails permanently","The app reads from the DB, then populates the cache for next time","The cache automatically pre-fetches all possible keys","Nothing — misses are ignored"], correct:1, why:"Cache-aside is a passive, on-demand pattern: the app itself handles falling through to the DB and re-populating the cache on a miss."},
+    {q:"Why does database sharding cost you something?", opts:["It doesn't cost anything","Cross-shard joins and multi-shard transactions become hard or impossible","It makes reads slower for all queries, always","It requires deleting all existing data"], correct:1, why:"Once data is split across shards by key, queries that need to join or transact across multiple shard keys lose the simplicity of a single-node database."},
+    {q:"Which rate-limiting algorithm is usually the best default, allowing controlled bursts?", opts:["Fixed window","Token bucket","No limiting at all","Alphabetical limiting"], correct:1, why:"Token bucket allows short bursts up to a set capacity while still enforcing a steady average rate, avoiding the boundary-burst problem of fixed windows."}
+  ],
+  thinking:"For a system you're designing or maintaining, would you rather it lean 'consistent' (never show stale data, sometimes unavailable) or 'available' (always respond, sometimes stale)? Justify it against what actually breaks for your users if you get it wrong in each direction."
+},
+{
+  title:"Advanced Synthesis — DDD, Clean Architecture & System Design",
+  stage:"Advanced → Capstone",
+  tagline:"Tying every prior day together: modeling the domain properly, protecting business logic from infrastructure, and documenting the decisions you made.",
+  concepts:[
+    {h:"Domain-Driven Design (DDD)", p:["DDD's core move is treating the business domain, not the database schema, as the primary design artifact. A Bounded Context is an explicit boundary within which a model and its vocabulary are consistent (the word 'Customer' might mean something different in Billing than in Support — DDD says that's fine, keep them as separate models rather than forcing one shared 'Customer' entity everyone half-agrees on).", "An Aggregate is a cluster of objects treated as one consistency boundary — you load, modify, and save an aggregate as a unit, and it's the only thing that should be directly referenced from outside. Ubiquitous Language means the code's class and method names should literally match the words domain experts use in conversation — when engineers and product people use the same word for different things, bugs and miscommunication follow."]},
+    {h:"Hexagonal / Clean / Onion Architecture", p:["These three named architectures are variations on the same core idea: put business logic (the domain) at the center, with zero dependencies on frameworks, databases, or UI. Everything infrastructure-related — the database, the web framework, external APIs — lives in an outer layer and depends *inward* on the domain through interfaces (ports), with concrete implementations (adapters) plugged in.", "The payoff: you can swap Postgres for DynamoDB, or REST for gRPC, or even write a CLI instead of a web UI, without touching a single line of business logic — because business logic never imported those things in the first place. This is Dependency Inversion (Day 3's SOLID) applied at the architectural scale."]},
+    {h:"Architecture Decision Records (ADRs)", p:["A short, versioned document capturing one architectural decision: the Context (what problem, what constraints), the Decision (what you chose), and the Consequences (what you gain, what you give up, what becomes harder). ADRs matter because the *reasoning* behind a decision decays from institutional memory far faster than the decision itself — six months later, no one remembers why microservices were rejected in favor of a monolith unless it's written down."]},
+    {h:"Architecture Trade-off Analysis (ATAM, lightweight)", p:["Before committing to an architecture, list your top 3-5 quality attribute scenarios (concrete, measurable — 'system stays available during a single AZ outage', not vague 'high availability'), then walk each candidate architecture against each scenario and name the specific risk or sensitivity point. This turns 'which architecture is better' from a taste argument into an evidence-based comparison against your actual drivers from Day 1."]}
+  ],
+  example:{
+    tag:"Worked Example",
+    h:"Hexagonal architecture for a payment service",
+    body:["The domain core has zero knowledge of Stripe, Postgres, or HTTP — those are all adapters plugged into ports:"],
+    code:`             +-------------------------------------+
+             |          DOMAIN (the hexagon)        |
+             |  PaymentService, Money, PaymentPolicy |
+             |  - depends on NOTHING external        |
+             +-------------------------------------+
+                 ^ implements          ^ implements
+     Port: PaymentGateway         Port: PaymentRepository
+     (interface, in domain)       (interface, in domain)
+                 |                          |
+     Adapter: StripeGateway       Adapter: PostgresPaymentRepo
+     (outer layer, knows Stripe)  (outer layer, knows SQL)
+
+  Swap Stripe -> Adyen later? Write a new AdyenGateway adapter.
+  PaymentService, Money, and every test around them: unchanged.`,
+    why:["Every dependency arrow points *inward* toward the domain, never outward. That single rule is what makes the domain testable in isolation (fake the ports, no real DB or Stripe call needed) and what makes infrastructure genuinely swappable — which is the entire promise of hexagonal/clean/onion architecture, and the reason it's often the default recommendation for any service with real, evolving business rules."]
+  },
+  quiz:[
+    {q:"In DDD, what is a Bounded Context?", opts:["A database table","An explicit boundary within which a model and its vocabulary stay consistent, even if the same word means something different elsewhere","A type of unit test","A network firewall rule"], correct:1, why:"Bounded Contexts let different parts of a system use the same word ('Customer') to mean different things, without forcing one shared, ever-compromising model."},
+    {q:"What is DDD's 'Ubiquitous Language' meant to prevent?", opts:["Using English instead of another language","Mismatches between the words engineers use in code and the words domain experts use in conversation","Long variable names","Using more than one programming language"], correct:1, why:"When code vocabulary and business vocabulary drift apart, miscommunication and subtle bugs follow — Ubiquitous Language keeps them the same word."},
+    {q:"In Hexagonal/Clean Architecture, which direction do dependencies point?", opts:["Outward, from domain to infrastructure","Inward — infrastructure (adapters) depends on the domain through ports/interfaces, never the reverse","There is no dependency direction rule","Domain code directly imports the database driver"], correct:1, why:"The domain is dependency-free; adapters implement domain-defined interfaces (ports), keeping all dependencies pointing inward."},
+    {q:"What three things does an ADR (Architecture Decision Record) typically capture?", opts:["Author, date, file size","Context, Decision, Consequences","Budget, timeline, headcount","Only the final decision, nothing else"], correct:1, why:"An ADR records the problem/constraints (Context), what was chosen (Decision), and the resulting trade-offs (Consequences) — so the reasoning survives even after memory fades."},
+    {q:"What makes a good ATAM-style quality attribute scenario?", opts:["Vague and aspirational, e.g. 'the system should be fast'","Concrete and measurable, e.g. 'stays available during a single AZ outage'","Written only after the system ships","Based purely on developer preference"], correct:1, why:"Concrete, measurable scenarios are what let you actually compare candidate architectures with evidence instead of opinion."}
+  ],
+  thinking:"Capstone: pick one system from this week (your job tracker, budget app, robot stack, or something new) and write a one-page mini ADR for its most important architectural decision: Context (constraints/drivers), Decision (what you chose and why), Consequences (what you gained, what you gave up). This is the single most transferable habit from this whole course."
+}
+];
+
+/* ---------------------------------------------------------------
+   STATE + STORAGE
+--------------------------------------------------------------- */
+let currentDay = 0;
+let progress = {}; // { dayIdx: { quizAnswers: {qIdx: optIdx}, quizSubmitted: bool, thinkingText: '' } }
+
+function dayKey(i){ return 'day' + i; }
+
+async function loadProgress(){
+  try{
+    const res = await window.storage.get('architecture-academy-progress');
+    if(res && res.value){ progress = JSON.parse(res.value); }
+  }catch(e){ /* no saved progress yet */ }
+  for(let i=0;i<DAYS.length;i++){
+    if(!progress[dayKey(i)]) progress[dayKey(i)] = { answers:{}, submitted:false, thinking:'' };
+  }
+}
+async function saveProgress(){
+  try{ await window.storage.set('architecture-academy-progress', JSON.stringify(progress)); }
+  catch(e){ console.error('save failed', e); }
+}
+
+function isDayComplete(i){
+  const p = progress[dayKey(i)];
+  return p && p.submitted && p.thinking && p.thinking.trim().length > 0;
+}
+
+/* ---------------------------------------------------------------
+   RENDER
+--------------------------------------------------------------- */
+function renderSidebar(){
+  const nav = document.getElementById('daynav');
+  nav.innerHTML = '';
+  DAYS.forEach((d,i)=>{
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.className = 'daynav-btn' + (i===currentDay?' active':'');
+    btn.innerHTML = `
+      <span class="sheet-no">A-${String(i+1).padStart(2,'0')}</span>
+      <span class="label"><span class="t">Day ${i+1}</span><span class="st">${d.stage}</span></span>
+      <span class="status-dot ${isDayComplete(i)?'done':''}"></span>
+    `;
+    btn.onclick = ()=>{ currentDay = i; render(); window.scrollTo(0,0); };
+    li.appendChild(btn);
+    nav.appendChild(li);
+  });
+  const done = DAYS.filter((_,i)=>isDayComplete(i)).length;
+  document.getElementById('titleblock').innerHTML = `
+    <div class="row"><span>PROJECT</span><b>Software Architecture</b></div>
+    <div class="row"><span>SHEETS</span><b>${done} / ${DAYS.length} complete</b></div>
+    <div class="row"><span>SCALE</span><b>Beginner → Advanced</b></div>
+  `;
+}
+
+function renderQuiz(container, dayIdx, quiz){
+  const p = progress[dayKey(dayIdx)];
+  const wrap = document.createElement('div');
+  quiz.forEach((q, qi)=>{
+    const qCard = document.createElement('div');
+    qCard.className = 'quiz-q';
+    const answered = p.answers[qi] !== undefined;
+    qCard.innerHTML = `<div class="qmeta">Question ${qi+1} / ${quiz.length}</div><div class="qn">${q.q}</div>`;
+    const ul = document.createElement('ul'); ul.className = 'opts';
+    q.opts.forEach((opt, oi)=>{
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.className = 'opt-btn';
+      b.textContent = opt;
+      if(p.submitted){
+        b.disabled = true;
+        if(oi === q.correct) b.classList.add('correct');
+        else if(p.answers[qi] === oi) b.classList.add('wrong');
+      } else if(p.answers[qi] === oi){
+        b.classList.add('selected');
+      }
+      b.onclick = ()=>{
+        if(p.submitted) return;
+        p.answers[qi] = oi;
+        saveProgress();
+        renderMain();
+      };
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+    qCard.appendChild(ul);
+    const ex = document.createElement('div');
+    ex.className = 'explain' + (p.submitted ? ' show' : '');
+    ex.innerHTML = `<b style="color:var(--amber)">Why:</b> ${q.why}`;
+    qCard.appendChild(ex);
+    wrap.appendChild(qCard);
+  });
+
+  if(!p.submitted){
+    const allAnswered = quiz.every((_,qi)=> p.answers[qi] !== undefined);
+    const submitBtn = document.createElement('button');
+    submitBtn.className = 'save-btn';
+    submitBtn.textContent = allAnswered ? 'SUBMIT QUIZ' : `ANSWER ALL (${Object.keys(p.answers).length}/${quiz.length})`;
+    submitBtn.disabled = !allAnswered;
+    submitBtn.onclick = ()=>{ p.submitted = true; saveProgress(); renderMain(); renderSidebar(); };
+    wrap.appendChild(submitBtn);
+  } else {
+    const score = quiz.filter((q,qi)=> p.answers[qi] === q.correct).length;
+    const summary = document.createElement('div');
+    summary.className = 'quiz-summary';
+    summary.innerHTML = `<span>SCORE</span><span>${score} / ${quiz.length} correct</span>`;
+    wrap.appendChild(summary);
+  }
+  container.appendChild(wrap);
+}
+
+function renderMain(){
+  const main = document.getElementById('main');
+  main.innerHTML = '';
+  const day = DAYS[currentDay];
+  const p = progress[dayKey(currentDay)];
+
+  const header = document.createElement('div');
+  header.className = 'sheet-header';
+  header.innerHTML = `
+    <div class="eyebrow">Sheet A-${String(currentDay+1).padStart(2,'0')} · Day ${currentDay+1} of ${DAYS.length} · ${day.stage}</div>
+    <h2>${day.title}</h2>
+    <div class="tagline">${day.tagline}</div>
+  `;
+  main.appendChild(header);
+
+  // Concepts
+  const cBlock = document.createElement('section');
+  cBlock.className = 'block';
+  cBlock.innerHTML = `<div class="block-head"><span class="idx">01</span><h3>Core Concepts</h3></div>`;
+  const cInner = document.createElement('div');
+  day.concepts.forEach(c=>{
+    const card = document.createElement('div');
+    card.className = 'concept-card';
+    card.innerHTML = `<h4>${c.h}</h4>${c.p.map(par=>`<p>${par}</p>`).join('')}`;
+    cInner.appendChild(card);
+  });
+  cBlock.appendChild(cInner);
+  main.appendChild(cBlock);
+
+  // Example
+  const eBlock = document.createElement('section');
+  eBlock.className = 'block';
+  eBlock.innerHTML = `<div class="block-head"><span class="idx">02</span><h3>Worked Example</h3></div>`;
+  const ex = day.example;
+  const exBox = document.createElement('div');
+  exBox.className = 'example-box';
+  exBox.innerHTML = `
+    <div class="tag">${ex.tag}</div>
+    <h4>${ex.h}</h4>
+    ${ex.body.map(b=>`<p>${b}</p>`).join('')}
+    <pre>${ex.code}</pre>
+    <div class="why"><p><b>Why it matters:</b> ${ex.why.join(' ')}</p></div>
+  `;
+  eBlock.appendChild(exBox);
+  main.appendChild(eBlock);
+
+  // Quiz
+  const qBlock = document.createElement('section');
+  qBlock.className = 'block';
+  qBlock.innerHTML = `<div class="block-head"><span class="idx">03</span><h3>Quiz — Check Your Understanding</h3></div>`;
+  renderQuiz(qBlock, currentDay, day.quiz);
+  main.appendChild(qBlock);
+
+  // Thinking session
+  const tBlock = document.createElement('section');
+  tBlock.className = 'block';
+  tBlock.innerHTML = `<div class="block-head"><span class="idx">04</span><h3>Thinking Session</h3></div>`;
+  const tBox = document.createElement('div');
+  tBox.className = 'thinking-box';
+  tBox.innerHTML = `
+    <div class="prompt">${day.thinking}</div>
+    <textarea id="thinking-input" placeholder="Write your reflection here...">${p.thinking || ''}</textarea>
+    <div class="thinking-actions">
+      <span class="save-status" id="save-status">${p.thinking ? 'Saved' : 'Not saved yet'}</span>
+      <button class="save-btn" id="save-thinking-btn">SAVE REFLECTION</button>
+    </div>
+  `;
+  tBlock.appendChild(tBox);
+  main.appendChild(tBlock);
+
+  document.getElementById('save-thinking-btn').onclick = async ()=>{
+    const val = document.getElementById('thinking-input').value;
+    p.thinking = val;
+    document.getElementById('save-status').textContent = 'Saving...';
+    await saveProgress();
+    document.getElementById('save-status').textContent = 'Saved';
+    renderSidebar();
+  };
+
+  // Nav footer
+  const nav = document.createElement('div');
+  nav.className = 'nav-footer';
+  const prevBtn = document.createElement('button');
+  prevBtn.textContent = '← PREV SHEET';
+  prevBtn.disabled = currentDay === 0;
+  prevBtn.onclick = ()=>{ currentDay--; render(); window.scrollTo(0,0); };
+  const nextBtn = document.createElement('button');
+  nextBtn.textContent = 'NEXT SHEET →';
+  nextBtn.disabled = currentDay === DAYS.length - 1;
+  nextBtn.onclick = ()=>{ currentDay++; render(); window.scrollTo(0,0); };
+  nav.appendChild(prevBtn);
+  nav.appendChild(nextBtn);
+  main.appendChild(nav);
+}
+
+function render(){
+  renderSidebar();
+  renderMain();
+}
+
+(async function init(){
+  await loadProgress();
+  render();
+})();
+</script>
+
+<script src="../../assets/course-nav.js"></script>
+</body>
+</html>

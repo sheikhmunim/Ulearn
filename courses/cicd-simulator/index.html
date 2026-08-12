@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CI/CD Sandbox — build a pipeline stage by stage</title>
+
+<!-- course registry metadata — read by scripts/build-registry.mjs -->
+<meta name="course:title"       content="CI/CD Sandbox">
+<meta name="course:description" content="Assemble a real pipeline stage by stage — commit, build, test, deploy — and watch it run and fail in a simulated editor.">
+<meta name="course:tags"        content="devops,ci-cd,hands-on">
+<meta name="course:level"       content="beginner">
+<meta name="course:duration"    content="~1 hour">
+<meta name="course:type"        content="simulator">
+<meta name="course:accent"      content="#007ACC">
+<meta name="course:icon"        content="⚙️">
+<meta name="course:status"      content="live">
+
+<style>
+:root{
+  --bg:#1e1e1e;
+  --sidebar:#252526;
+  --sidebar-hover:#2a2d2e;
+  --activitybar:#333333;
+  --border:#3c3c3c;
+  --tab-active:#1e1e1e;
+  --tab-inactive:#2d2d2d;
+  --text:#cccccc;
+  --text-dim:#858585;
+  --blue:#007acc;
+  --blue-status:#007acc;
+  --green:#4ec9b0;
+  --yellow:#dcdcaa;
+  --red:#f14c4c;
+  --orange:#ce9178;
+  --purple:#c586c0;
+  --pyellow:#e5c07b;
+  --mono:'SF Mono','Fira Code',Consolas,'Courier New',monospace;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--mono);
+  font-size:13px; display:flex; flex-direction:column; height:100vh; overflow:hidden;
+}
+.titlebar{
+  height:30px; background:#3c3c3c; display:flex; align-items:center;
+  justify-content:center; font-size:12px; color:var(--text-dim); flex-shrink:0;
+  border-bottom:1px solid #000;
+}
+.main{flex:1; display:flex; min-height:0;}
+
+/* activity bar */
+.activitybar{
+  width:48px; background:var(--activitybar); flex-shrink:0;
+  display:flex; flex-direction:column; align-items:center; padding-top:10px; gap:22px;
+}
+.abtn{width:24px; height:24px; display:flex; align-items:center; justify-content:center;
+  color:#858585; font-size:18px; cursor:pointer; border-left:2px solid transparent;}
+.abtn.active{color:#fff; border-left:2px solid #fff;}
+
+/* explorer */
+.explorer{width:230px; background:var(--sidebar); flex-shrink:0; overflow-y:auto;
+  border-right:1px solid var(--border); padding-top:8px;}
+.explorer-title{font-size:11px; color:var(--text-dim); padding:4px 20px; letter-spacing:0.08em; font-weight:600;}
+.tree-root{padding:2px 0 2px 8px; font-size:13px; color:#fff; font-weight:600; cursor:pointer;}
+.tree-folder{padding:2px 0 2px 20px; font-size:13px; color:var(--text); cursor:pointer;}
+.tree-file{padding:3px 4px 3px 34px; font-size:13px; color:var(--text); cursor:pointer;
+  display:flex; align-items:center; gap:6px; white-space:nowrap;}
+.tree-file:hover, .tree-folder:hover{background:var(--sidebar-hover);}
+.tree-file.selected{background:#37373d;}
+.badge{width:14px; height:14px; border-radius:3px; font-size:9px; font-weight:800;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#1e1e1e;}
+.b-py{background:var(--pyellow);}
+.b-txt{background:#8b96a3;}
+.b-md{background:#519aba;}
+.b-yml{background:#e06c75;}
+.b-docker{background:#3fb3d1;}
+.tree-file .status{margin-left:auto; font-size:10px; color:var(--text-dim);}
+.tree-file .status.todo{color:var(--yellow);}
+.tree-file .status.done{color:var(--green);}
+
+/* editor area */
+.editor-area{flex:1; display:flex; flex-direction:column; min-width:0;}
+.tabbar{display:flex; background:var(--tab-inactive); border-bottom:1px solid var(--border); overflow-x:auto; flex-shrink:0;}
+.tab{padding:8px 14px; font-size:13px; color:var(--text-dim); background:var(--tab-inactive);
+  border-right:1px solid var(--border); cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap;}
+.tab.active{background:var(--tab-active); color:#fff; border-top:2px solid var(--blue);}
+
+.editor-wrap{flex:1; display:flex; min-height:0;}
+.editor-body{flex:1; display:flex; overflow:hidden;}
+.gutter{background:var(--bg); color:#5a5a5a; text-align:right; padding:12px 10px 12px 0;
+  font-size:13px; line-height:20px; user-select:none; flex-shrink:0; min-width:36px;
+  white-space:pre; overflow:hidden;}
+textarea.code{
+  flex:1; background:var(--bg); color:var(--text); border:none; outline:none; resize:none;
+  font-family:var(--mono); font-size:13px; line-height:20px; padding:12px 12px 12px 0;
+  white-space:pre; overflow:auto; tab-size:4;
+}
+textarea.code:disabled{color:#8a8a8a; background:#1a1a1a;}
+.editor-hint{
+  position:absolute; margin:12px 0 0 46px; color:#5a5a5a; font-style:italic; pointer-events:none; font-size:13px;
+}
+
+/* terminal */
+.termbar{flex-shrink:0; border-top:1px solid var(--border);}
+.termtabs{display:flex; background:#252526; font-size:11px; color:var(--text-dim);}
+.termtab{padding:8px 14px; cursor:pointer; letter-spacing:0.05em;}
+.termtab.active{color:#fff; border-top:1px solid var(--blue);}
+.termactions{margin-left:auto; display:flex; align-items:center; gap:8px; padding:0 12px;}
+.term-btn{
+  background:#0e639c; color:#fff; border:none; padding:5px 12px; font-size:11px;
+  border-radius:2px; cursor:pointer; font-family:var(--mono); letter-spacing:0.03em;
+}
+.term-btn.secondary{background:#3a3d41;}
+.term-btn:hover{filter:brightness(1.15);}
+#terminal{
+  height:220px; background:#181818; overflow-y:auto; padding:10px 14px; font-size:12.5px; line-height:1.65;
+}
+.tline{white-space:pre-wrap;}
+.tline.ok{color:var(--green);}
+.tline.fail{color:var(--red);}
+.tline.warn{color:var(--yellow);}
+.tline.dim{color:var(--text-dim);}
+.tline.cmd{color:#fff;}
+.tline.cmd::before{content:"$ "; color:var(--blue);}
+
+/* status bar */
+.statusbar{
+  height:22px; background:var(--blue-status); display:flex; align-items:center; padding:0 10px;
+  font-size:11px; color:#fff; gap:16px; flex-shrink:0;
+}
+.statusbar span{display:flex; align-items:center; gap:4px;}
+
+/* coach panel */
+.coach{width:320px; background:#252526; border-left:1px solid var(--border); flex-shrink:0;
+  display:flex; flex-direction:column; overflow-y:auto;}
+.coach-head{padding:12px 16px; border-bottom:1px solid var(--border); font-size:11px; letter-spacing:0.08em;
+  color:var(--text-dim); font-weight:700;}
+.coach-body{padding:12px 16px; flex:1; overflow-y:auto;}
+.task{border:1px solid var(--border); border-radius:4px; margin-bottom:12px; background:#1e1e1e;}
+.task-head{padding:10px 12px; font-size:12.5px; font-weight:700; color:#fff; display:flex;
+  align-items:center; gap:8px;}
+.task-num{width:18px; height:18px; border-radius:50%; background:#3a3d41; color:var(--text-dim);
+  font-size:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+.task-num.done{background:var(--green); color:#1e1e1e;}
+.task-body{padding:0 12px 12px 12px; font-size:12px; color:var(--text-dim); line-height:1.6;}
+.task-body code{background:#0e0e0e; padding:1px 4px; border-radius:3px; color:var(--orange); font-size:11.5px;}
+.task-actions{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;}
+.mini-btn{
+  background:#3a3d41; color:#fff; border:none; padding:5px 9px; font-size:10.5px;
+  border-radius:2px; cursor:pointer; font-family:var(--mono);
+}
+.mini-btn:hover{background:#4a4d51;}
+.mini-btn.primary{background:#0e639c;}
+.mini-btn.primary:hover{background:#1177bb;}
+.readme-render h1{font-size:16px; margin:0 0 8px 0; color:#fff;}
+.readme-render h2{font-size:13px; margin:14px 0 6px 0; color:#fff;}
+.readme-render p{margin:0 0 8px 0; color:var(--text); font-size:12.5px; line-height:1.6;}
+.readme-render li{color:var(--text); font-size:12.5px; margin-bottom:4px;}
+.readme-render code{background:#0e0e0e; padding:1px 4px; border-radius:3px; color:var(--orange);}
+
+.b-theory{background:#f2a100;}
+
+/* theory overlay */
+#theoryOverlay{
+  position:fixed; inset:0; background:#14181c; z-index:100; display:none;
+  flex-direction:column;
+}
+#theoryOverlay.open{display:flex;}
+.theory-bar{
+  height:38px; flex-shrink:0; background:#252526; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 14px; gap:10px; font-family:var(--mono); font-size:12px;
+}
+.theory-bar .ttitle{color:#fff; font-weight:700; display:flex; align-items:center; gap:8px;}
+.theory-bar .tclose{
+  margin-left:auto; background:#3a3d41; color:#fff; border:none; padding:5px 12px;
+  border-radius:2px; cursor:pointer; font-family:var(--mono); font-size:11px;
+}
+.theory-bar .tclose:hover{background:#4a4d51;}
+#theoryFrame{flex:1; border:none; width:100%;}
+
+@media (max-width:1100px){
+  .main{flex-direction:column; height:auto;}
+  body{height:auto; min-height:100vh; overflow:auto;}
+  .activitybar{width:100%; flex-direction:row; padding:6px 10px; gap:16px;}
+  .explorer{width:100%; max-height:160px; border-right:none; border-bottom:1px solid var(--border);}
+  .editor-wrap{height:320px;}
+  #terminal{height:180px;}
+  .coach{width:100%; border-left:none; border-top:1px solid var(--border); max-height:none;}
+}
+.coach-collapsed-note{display:none; padding:10px 16px; font-size:11px; color:var(--text-dim); background:#1e1e1e; border-bottom:1px solid var(--border);}
+</style>
+</head>
+<body>
+
+<div class="titlebar">calculator-cicd-demo &mdash; Visual Studio Code (simulated)</div>
+
+<div class="main">
+  <div class="activitybar">
+    <div class="abtn active" title="Explorer">&#128193;</div>
+    <div class="abtn" title="Search">&#128269;</div>
+    <div class="abtn" title="Source Control">&#8942;</div>
+    <div class="abtn" title="Run">&#9654;</div>
+    <div class="abtn" id="abtnTheory" title="Theory (CI/CD from scratch)">&#128214;</div>
+  </div>
+
+  <div class="explorer">
+    <div class="explorer-title">Explorer</div>
+    <div class="tree-root">&#9662; CALCULATOR-CICD-DEMO</div>
+    <div id="fileTree"></div>
+  </div>
+
+  <div class="editor-area">
+    <div class="tabbar" id="tabbar"></div>
+    <div class="editor-wrap">
+      <div class="editor-body">
+        <div class="gutter" id="gutter">1</div>
+        <textarea class="code" id="editor" spellcheck="false"></textarea>
+      </div>
+    </div>
+
+    <div class="termbar">
+      <div class="termtabs">
+        <div class="termtab active">TERMINAL</div>
+        <div class="termtab">OUTPUT</div>
+        <div class="termactions">
+          <button class="term-btn secondary" id="btnClear">clear</button>
+          <button class="term-btn secondary" id="btnValidate">validate current file</button>
+          <button class="term-btn secondary" id="btnAutoSolve" style="background:#5a3d8a;">auto-solve all &amp; push</button>
+          <button class="term-btn" id="btnPush">git push (run pipeline)</button>
+        </div>
+      </div>
+      <div id="terminal"></div>
+    </div>
+
+    <div class="statusbar">
+      <span>&#9670; main</span>
+      <span id="statusFile">calculator.py</span>
+      <span style="margin-left:auto;">Spaces: 4</span>
+      <span>UTF-8</span>
+      <span>Python</span>
+    </div>
+  </div>
+
+  <div class="coach">
+    <div class="coach-head">CI/CD COACH</div>
+    <div class="coach-body" id="coachBody"></div>
+  </div>
+</div>
+
+<div id="theoryOverlay">
+  <div class="theory-bar">
+    <span class="ttitle">&#128214; THEORY.md &mdash; CI/CD from scratch</span>
+    <button class="tclose" id="theoryClose">close &times;</button>
+  </div>
+  <iframe id="theoryFrame"></iframe>
+</div>
+
+<script>
+/* ---------------- file contents ---------------- */
+const SOLUTIONS = {
+  'test_calculator.py': `import pytest
+from calculator import add, subtract, multiply, divide
+
+def test_add():
+    assert add(2, 3) == 5
+
+def test_subtract():
+    assert subtract(5, 2) == 3
+
+def test_multiply():
+    assert multiply(4, 3) == 12
+
+def test_divide():
+    assert divide(10, 2) == 5
+
+def test_divide_by_zero():
+    with pytest.raises(ValueError):
+        divide(1, 0)
+`,
+  'Dockerfile': `FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["pytest"]
+`,
+  '.github/workflows/ci-cd.yml': `name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: pytest
+
+  build-and-push:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: \${{ secrets.REGISTRY_USER }}
+          password: \${{ secrets.REGISTRY_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: calculator-app:\${{ github.sha }}
+`
+};
+
+
+const THEORY_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CI/CD From Scratch</title>
+<style>
+:root{
+  --bg:#14181c;
+  --panel:#1b2127;
+  --panel-2:#20272e;
+  --line:#2a323b;
+  --text:#eceef0;
+  --muted:#8b96a3;
+  --amber:#f2a100;
+  --amber-dim:#7a5600;
+  --green:#3fb897;
+  --red:#e5484d;
+  --mono:'SF Mono','Fira Code',Consolas,'Courier New',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{
+  font-family:var(--sans);
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:0.03em;
+  margin:0 0 0.4em 0;
+}
+h1{font-size:clamp(2rem,5vw,3.4rem); letter-spacing:0.01em;}
+h2{font-size:clamp(1.3rem,3vw,1.9rem); color:var(--amber);}
+h3{font-size:1.05rem; letter-spacing:0.06em; color:var(--text);}
+p{color:var(--text); margin:0 0 1em 0;}
+.muted{color:var(--muted);}
+code, .mono{font-family:var(--mono);}
+a{color:var(--green);}
+
+.wrap{max-width:900px; margin:0 auto; padding:0 24px;}
+section{padding:70px 0; border-bottom:1px solid var(--line);}
+section:last-of-type{border-bottom:none;}
+
+/* ---------- sticky pipeline tracker ---------- */
+#tracker{
+  position:sticky; top:0; z-index:50;
+  background:rgba(20,24,28,0.94);
+  backdrop-filter:blur(6px);
+  border-bottom:1px solid var(--line);
+  padding:14px 0;
+}
+#tracker .wrap{display:flex; align-items:center; gap:0; max-width:900px;}
+.stage{
+  display:flex; align-items:center; gap:8px;
+  color:var(--muted); font-size:0.68rem; font-weight:700;
+  letter-spacing:0.08em; text-transform:uppercase;
+  white-space:nowrap;
+}
+.stage .dot{
+  width:11px; height:11px; border-radius:50%;
+  background:var(--panel-2); border:2px solid var(--line);
+  transition:all .3s ease; flex-shrink:0;
+}
+.stage.active .dot{background:var(--amber); border-color:var(--amber); box-shadow:0 0 8px var(--amber);}
+.stage.done .dot{background:var(--green); border-color:var(--green);}
+.stage.active{color:var(--amber);}
+.stage.done{color:var(--green);}
+.pipe{
+  flex:1; height:2px; background:var(--line); margin:0 2px;
+  position:relative; min-width:14px;
+}
+.pipe .fill{
+  position:absolute; left:0; top:0; height:100%; width:0%;
+  background:var(--green); transition:width .4s ease;
+}
+@media (max-width:720px){
+  .stage span.label{display:none;}
+  #tracker .wrap{gap:0;}
+}
+
+/* ---------- hero ---------- */
+#hero{padding-top:56px;}
+.eyebrow{
+  color:var(--amber); font-family:var(--mono); font-size:0.8rem;
+  letter-spacing:0.15em; text-transform:uppercase; margin-bottom:14px;
+}
+.hero-diagram{
+  margin:36px 0; padding:24px; background:var(--panel);
+  border:1px solid var(--line); border-radius:6px;
+  display:flex; align-items:center; justify-content:space-between; gap:6px;
+  overflow-x:auto;
+}
+.node{
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  min-width:78px; flex-shrink:0;
+}
+.node .box{
+  width:56px; height:56px; border-radius:8px;
+  background:var(--panel-2); border:2px solid var(--line);
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.4rem;
+}
+.node .cap{font-size:0.62rem; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); text-align:center; font-weight:700;}
+.arrow{color:var(--line); font-size:1.4rem; flex-shrink:0;}
+
+/* ---------- cards / grids ---------- */
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+.grid3{display:grid; grid-template-columns:repeat(3,1fr); gap:16px;}
+@media (max-width:680px){.grid2,.grid3{grid-template-columns:1fr;}}
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  padding:20px;
+}
+.card.bad{border-left:3px solid var(--red);}
+.card.good{border-left:3px solid var(--green);}
+.card h3{margin-bottom:10px;}
+.card ul{margin:0; padding-left:20px; color:var(--muted); font-size:0.92rem;}
+.card ul li{margin-bottom:6px;}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex; gap:2px; margin-bottom:0; flex-wrap:wrap;}
+.tab-btn{
+  background:var(--panel); color:var(--muted); border:1px solid var(--line);
+  border-bottom:none; padding:10px 16px; font-family:var(--sans); font-weight:700;
+  font-size:0.78rem; letter-spacing:0.05em; text-transform:uppercase;
+  cursor:pointer; border-radius:6px 6px 0 0;
+}
+.tab-btn.active{color:var(--amber); background:var(--panel-2); border-color:var(--amber-dim);}
+.tab-panel{
+  display:none; background:var(--panel-2); border:1px solid var(--line);
+  border-radius:0 6px 6px 6px; padding:22px;
+}
+.tab-panel.active{display:block;}
+
+/* ---------- code blocks ---------- */
+pre{
+  background:#0f1317; border:1px solid var(--line); border-radius:6px;
+  padding:16px; overflow-x:auto; font-family:var(--mono); font-size:0.84rem;
+  line-height:1.65; margin:14px 0;
+}
+pre .k{color:#f2a100;} /* keys */
+pre .s{color:#8fd6b4;} /* strings/values */
+pre .c{color:#5c6672; font-style:italic;} /* comments */
+pre .hl{background:rgba(242,161,0,0.14); display:inline-block; width:100%; border-left:2px solid var(--amber); padding-left:6px; margin-left:-8px;}
+
+.yaml-line{transition:background .2s ease; display:block;}
+.yaml-line.hot{background:rgba(242,161,0,0.16);}
+
+/* ---------- anatomy diagram ---------- */
+.anatomy{display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start;}
+@media (max-width:720px){.anatomy{grid-template-columns:1fr;}}
+.anatomy-label{
+  padding:10px 14px; background:var(--panel); border:1px solid var(--line);
+  border-radius:6px; margin-bottom:8px; cursor:pointer; font-size:0.88rem;
+}
+.anatomy-label b{color:var(--amber);}
+.anatomy-label:hover, .anatomy-label.active{border-color:var(--amber-dim); background:var(--panel-2);}
+
+/* ---------- builder ---------- */
+.builder{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+@media (max-width:780px){.builder{grid-template-columns:1fr;}}
+.step-option{
+  display:flex; align-items:flex-start; gap:12px; padding:12px 14px;
+  background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  margin-bottom:10px; cursor:pointer;
+}
+.step-option.locked{opacity:0.55; cursor:default;}
+.step-option input{margin-top:4px; accent-color:var(--amber);}
+.step-option .stxt b{display:block; font-size:0.88rem;}
+.step-option .stxt span{color:var(--muted); font-size:0.8rem;}
+.builder-preview{position:sticky; top:80px;}
+.builder-preview pre{max-height:560px; overflow-y:auto;}
+
+/* ---------- quiz ---------- */
+.quiz{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:22px; margin:18px 0;}
+.quiz .q{font-weight:700; margin-bottom:14px;}
+.quiz-opt{
+  display:block; width:100%; text-align:left; background:var(--panel-2);
+  border:1px solid var(--line); color:var(--text); padding:11px 14px;
+  border-radius:5px; margin-bottom:8px; cursor:pointer; font-family:var(--sans);
+  font-size:0.9rem;
+}
+.quiz-opt:hover{border-color:var(--amber-dim);}
+.quiz-opt.correct{border-color:var(--green); background:rgba(63,184,151,0.12); color:var(--green);}
+.quiz-opt.wrong{border-color:var(--red); background:rgba(229,72,77,0.12); color:var(--red);}
+.quiz-feedback{margin-top:10px; font-size:0.85rem; color:var(--muted); display:none;}
+.quiz-feedback.show{display:block;}
+
+/* ---------- accordion ---------- */
+.acc-item{border:1px solid var(--line); border-radius:6px; margin-bottom:10px; background:var(--panel);}
+.acc-head{
+  padding:14px 18px; cursor:pointer; display:flex; justify-content:space-between;
+  align-items:center; font-weight:700; font-size:0.9rem;
+}
+.acc-head .num{color:var(--amber); font-family:var(--mono); margin-right:10px;}
+.acc-body{max-height:0; overflow:hidden; transition:max-height .3s ease; padding:0 18px;}
+.acc-item.open .acc-body{max-height:600px; padding-bottom:16px;}
+.acc-chevron{transition:transform .3s ease; color:var(--muted);}
+.acc-item.open .acc-chevron{transform:rotate(180deg); color:var(--amber);}
+
+/* ---------- deploy strategies ---------- */
+.strat-card{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:18px;}
+.strat-viz{height:60px; display:flex; align-items:center; gap:4px; margin:14px 0;}
+.svr{flex:1; height:34px; border-radius:4px; background:var(--panel-2); border:1px solid var(--line); transition:background .3s;}
+
+/* ---------- footer / roadmap ---------- */
+.roadmap-item{display:flex; gap:14px; align-items:flex-start; margin-bottom:18px;}
+.roadmap-item .idx{
+  font-family:var(--mono); color:var(--amber); font-weight:700; font-size:0.9rem;
+  border:1px solid var(--amber-dim); border-radius:50%; width:28px; height:28px;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+footer{padding:40px 0 80px; text-align:center; color:var(--muted); font-size:0.85rem;}
+</style>
+</head>
+<body>
+
+<div id="tracker">
+  <div class="wrap" id="trackerRow"></div>
+</div>
+
+<div class="wrap">
+
+<section id="hero">
+  <div class="eyebrow">CI/CD &middot; from scratch</div>
+  <h1>The assembly line<br>for your code</h1>
+  <p class="muted" style="font-size:1.05rem; max-width:640px;">
+    Every time you push code, something has to check it, test it, package it, and
+    get it running somewhere. Do that by hand and you'll eventually skip a step
+    at 2am and break production. CI/CD is the machine that does it for you, every time,
+    the same way, without getting tired.
+  </p>
+
+  <div class="hero-diagram">
+    <div class="node"><div class="box">&#9993;</div><div class="cap">Commit</div></div>
+    <div class="arrow">&rarr;</div>
+    <div class="node"><div class="box">&#9881;</div><div class="cap">Build</div></div>
+    <div class="arrow">&rarr;</div>
+    <div class="node"><div class="box">&#10003;</div><div class="cap">Test</div></div>
+    <div class="arrow">&rarr;</div>
+    <div class="node"><div class="box">&#128230;</div><div class="cap">Package</div></div>
+    <div class="arrow">&rarr;</div>
+    <div class="node"><div class="box">&#128640;</div><div class="cap">Deploy</div></div>
+  </div>
+
+  <p class="muted">
+    That's it, that's the whole idea. Everything below is just filling in how each
+    of those five stations actually works, and how to wire them together with real
+    config. No prior CI/CD knowledge assumed.
+  </p>
+</section>
+
+<section id="why" data-stage="commit">
+  <h2>Why bother automating this?</h2>
+  <p>Picture the manual version of shipping a change, versus the automated one.</p>
+  <div class="grid2">
+    <div class="card bad">
+      <h3 style="color:var(--red);">Manual, by hand</h3>
+      <ul>
+        <li>You run the tests locally, if you remember to</li>
+        <li>You SSH into a server and pull the latest code</li>
+        <li>You restart the process and hope nothing broke</li>
+        <li>Your teammate does it slightly differently</li>
+        <li>Nobody's sure which server is actually running which version</li>
+      </ul>
+    </div>
+    <div class="card good">
+      <h3 style="color:var(--green);">Automated pipeline</h3>
+      <ul>
+        <li>Every push runs the full test suite, no exceptions</li>
+        <li>The exact same steps run every single time</li>
+        <li>A failing test blocks the deploy automatically</li>
+        <li>Anyone on the team can ship, not just the one person who knows the steps</li>
+        <li>There's a log of exactly what shipped and when</li>
+      </ul>
+    </div>
+  </div>
+  <p class="muted" style="margin-top:18px;">
+    CI/CD isn't about fancy infrastructure. It's about removing the human as the
+    one thing standing between "code that works on my machine" and "code that runs
+    for real users."
+  </p>
+</section>
+
+<section id="vocab" data-stage="commit">
+  <h2>Three letters, two of them lie</h2>
+  <p>CI/CD gets used as one term, but it's really three separate ideas stacked on top of each other.</p>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="ci">CI</button>
+    <button class="tab-btn" data-tab="cdel">CD (delivery)</button>
+    <button class="tab-btn" data-tab="cdep">CD (deployment)</button>
+  </div>
+  <div class="tab-panel active" data-tab="ci">
+    <h3>Continuous Integration</h3>
+    <p>Every time someone pushes code, it automatically gets built and tested. The goal
+    is to catch a broken change within minutes, not weeks later when three other people
+    have built on top of it. This is the "build + test" part of the diagram above.</p>
+  </div>
+  <div class="tab-panel" data-tab="cdel">
+    <h3>Continuous Delivery</h3>
+    <p>Once code passes CI, it's automatically packaged into something deployable
+    (a Docker image, a build artifact) and staged, ready to go live. A human still
+    clicks the button to actually release it. This is "always ready to ship," not
+    "always shipping."</p>
+  </div>
+  <div class="tab-panel" data-tab="cdep">
+    <h3>Continuous Deployment</h3>
+    <p>The same as delivery, except there's no button to click. If it passes every
+    stage, it goes live automatically. This is the full "no human in the loop" version,
+    and it's what most people mean when they just say "CI/CD."</p>
+  </div>
+</section>
+
+<section id="anatomy" data-stage="build">
+  <h2>What's actually inside a pipeline</h2>
+  <p>A pipeline definition (this example uses GitHub Actions, since it's the most common
+  starting point) is just a YAML file that answers four questions. Click each one to see
+  which part of the file it maps to.</p>
+
+  <div class="anatomy">
+    <div>
+      <div class="anatomy-label active" data-hl="1"><b>Trigger.</b> What event kicks this off? A push, a pull request, a schedule.</div>
+      <div class="anatomy-label" data-hl="2"><b>Job.</b> A group of steps that runs on its own machine (a "runner").</div>
+      <div class="anatomy-label" data-hl="3"><b>Runner.</b> The actual virtual machine your job executes on.</div>
+      <div class="anatomy-label" data-hl="4"><b>Steps.</b> The ordered list of individual commands or actions inside a job.</div>
+    </div>
+    <pre id="anatomyPre" style="margin:0;"></pre>
+  </div>
+</section>
+
+<section id="builder" data-stage="build">
+  <h2>Build one yourself</h2>
+  <p>Tick the stages you want. The YAML on the right assembles itself as you go, this is
+  a real, working GitHub Actions workflow for a Python app, not a toy example.</p>
+
+  <div class="builder">
+    <div id="stepOptions"></div>
+    <div class="builder-preview">
+      <pre id="builderYaml"></pre>
+    </div>
+  </div>
+</section>
+
+<section id="quiz1" data-stage="test">
+  <h2>Quick check</h2>
+  <div class="quiz">
+    <div class="q">1. Your test suite fails on a pushed commit. What should happen?</div>
+    <div class="opts">
+      <button class="quiz-opt" data-correct="false">The commit gets merged anyway, tests can be flaky</button>
+      <button class="quiz-opt" data-correct="true">The pipeline stops there and the deploy stage never runs</button>
+      <button class="quiz-opt" data-correct="false">It emails someone and continues regardless</button>
+    </div>
+    <div class="quiz-feedback"></div>
+  </div>
+  <div class="quiz">
+    <div class="q">2. What's the difference between Continuous Delivery and Continuous Deployment?</div>
+    <div class="opts">
+      <button class="quiz-opt" data-correct="false">There is no difference, they're the same thing</button>
+      <button class="quiz-opt" data-correct="true">Delivery stages a release for a human to approve, deployment ships it automatically</button>
+      <button class="quiz-opt" data-correct="false">Deployment only applies to mobile apps</button>
+    </div>
+    <div class="quiz-feedback"></div>
+  </div>
+</section>
+
+<section id="walkthrough" data-stage="test">
+  <h2>Reading a real pipeline, block by block</h2>
+  <p>Here's a complete workflow for a FastAPI service: test on every push, then build and
+  push a Docker image on merges to main. Open each block to see what it does.</p>
+
+  <pre style="margin-bottom:20px;"><span class="mono">
+<span class="c"># .github/workflows/ci-cd.yml</span>
+<span class="k">name:</span> <span class="s">CI/CD</span>
+
+<span class="k">on:</span>
+  <span class="k">push:</span>
+    <span class="k">branches:</span> [<span class="s">main</span>]
+  <span class="k">pull_request:</span>
+    <span class="k">branches:</span> [<span class="s">main</span>]
+
+<span class="k">jobs:</span>
+  <span class="k">test:</span>
+    <span class="k">runs-on:</span> <span class="s">ubuntu-latest</span>
+    <span class="k">steps:</span>
+      - <span class="k">uses:</span> <span class="s">actions/checkout@v4</span>
+      - <span class="k">uses:</span> <span class="s">actions/setup-python@v5</span>
+        <span class="k">with:</span>
+          <span class="k">python-version:</span> <span class="s">'3.11'</span>
+      - <span class="k">run:</span> <span class="s">pip install -r requirements.txt</span>
+      - <span class="k">run:</span> <span class="s">pytest</span>
+
+  <span class="k">build-and-push:</span>
+    <span class="k">needs:</span> <span class="s">test</span>
+    <span class="k">if:</span> <span class="s">github.ref == 'refs/heads/main'</span>
+    <span class="k">runs-on:</span> <span class="s">ubuntu-latest</span>
+    <span class="k">steps:</span>
+      - <span class="k">uses:</span> <span class="s">actions/checkout@v4</span>
+      - <span class="k">uses:</span> <span class="s">docker/login-action@v3</span>
+        <span class="k">with:</span>
+          <span class="k">username:</span> <span class="s">\${{ secrets.REGISTRY_USER }}</span>
+          <span class="k">password:</span> <span class="s">\${{ secrets.REGISTRY_TOKEN }}</span>
+      - <span class="k">uses:</span> <span class="s">docker/build-push-action@v6</span>
+        <span class="k">with:</span>
+          <span class="k">push:</span> <span class="s">true</span>
+          <span class="k">tags:</span> <span class="s">myapp:\${{ github.sha }}</span>
+
+  <span class="k">deploy:</span>
+    <span class="k">needs:</span> <span class="s">build-and-push</span>
+    <span class="k">runs-on:</span> <span class="s">ubuntu-latest</span>
+    <span class="k">steps:</span>
+      - <span class="k">run:</span> <span class="s">curl -X POST $DEPLOY_HOOK_URL</span>
+</span></pre>
+
+  <div id="accordion"></div>
+</section>
+
+<section id="docker" data-stage="deploy">
+  <h2>Where Docker fits in</h2>
+  <p>You already know Docker builds a reproducible image, the pipeline connection is
+  simple: CI builds and tests your code, then wraps it in an image, tags it with the
+  commit hash, and pushes it to a registry. Deployment then just tells your host
+  "run this exact tagged image."</p>
+  <div class="grid3">
+    <div class="card"><h3>Build</h3><p class="muted" style="font-size:0.88rem;">docker build tags the image with the git SHA, so every image traces back to an exact commit.</p></div>
+    <div class="card"><h3>Push</h3><p class="muted" style="font-size:0.88rem;">The image goes to a registry (Docker Hub, GHCR, ECR) the pipeline authenticates into with a stored secret.</p></div>
+    <div class="card"><h3>Pull</h3><p class="muted" style="font-size:0.88rem;">The deploy step tells the host to pull that tag and restart the container. Nothing gets rebuilt on the server.</p></div>
+  </div>
+</section>
+
+<section id="strategies" data-stage="deploy">
+  <h2>Getting it live without breaking things</h2>
+  <p>"Deploy" can mean very different things depending on how much risk you're willing
+  to take on. Hover each card.</p>
+  <div class="grid3" id="stratGrid"></div>
+</section>
+
+<section id="roadmap" data-stage="live">
+  <h2>Your first real pipeline, in order</h2>
+  <div id="roadmapList"></div>
+</section>
+
+<footer>
+  Built as a self-contained tutorial. Scroll back to the builder above any time you
+  need to re-assemble the YAML.
+</footer>
+
+</div>
+
+<\script>
+/* ---------------- tracker ---------------- */
+const stages = [
+  {id:'commit', label:'Commit'},
+  {id:'build', label:'Build'},
+  {id:'test', label:'Test'},
+  {id:'deploy', label:'Deploy'},
+  {id:'live', label:'Live'}
+];
+const trackerRow = document.getElementById('trackerRow');
+stages.forEach((s,i)=>{
+  const el = document.createElement('div');
+  el.className = 'stage';
+  el.id = 'track-'+s.id;
+  el.innerHTML = '<div class="dot"></div><span class="label">'+s.label+'</span>';
+  trackerRow.appendChild(el);
+  if(i < stages.length-1){
+    const pipe = document.createElement('div');
+    pipe.className='pipe';
+    pipe.innerHTML = '<div class="fill" id="fill-'+i+'"></div>';
+    trackerRow.appendChild(pipe);
+  }
+});
+
+function setStage(activeId){
+  const idx = stages.findIndex(s=>s.id===activeId);
+  stages.forEach((s,i)=>{
+    const el = document.getElementById('track-'+s.id);
+    el.classList.remove('active','done');
+    if(i < idx) el.classList.add('done');
+    else if(i === idx) el.classList.add('active');
+  });
+  for(let i=0;i<stages.length-1;i++){
+    const fill = document.getElementById('fill-'+i);
+    fill.style.width = (i < idx) ? '100%' : '0%';
+  }
+}
+setStage('commit');
+
+const sectionsWithStage = document.querySelectorAll('[data-stage]');
+const observer = new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{
+    if(entry.isIntersecting){
+      setStage(entry.target.getAttribute('data-stage'));
+    }
+  });
+},{rootMargin:'-40% 0px -50% 0px'});
+sectionsWithStage.forEach(s=>observer.observe(s));
+
+/* ---------------- tabs ---------------- */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const tab = btn.getAttribute('data-tab');
+    btn.parentElement.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(p=>{
+      p.classList.toggle('active', p.getAttribute('data-tab')===tab);
+    });
+  });
+});
+
+/* ---------------- anatomy diagram ---------------- */
+const anatomyYaml = [
+  {n:1, html:'<span class="yaml-line" data-hl="1"><span class="k">on:</span> <span class="s">push</span></span>'},
+  {n:2, html:'<span class="yaml-line" data-hl="2"><span class="k">jobs:</span>\\n  <span class="k">test:</span></span>'},
+  {n:3, html:'<span class="yaml-line" data-hl="3">    <span class="k">runs-on:</span> <span class="s">ubuntu-latest</span></span>'},
+  {n:4, html:'<span class="yaml-line" data-hl="4">    <span class="k">steps:</span>\\n      - <span class="k">run:</span> <span class="s">pytest</span></span>'}
+];
+function renderAnatomy(activeHl){
+  const pre = document.getElementById('anatomyPre');
+  pre.innerHTML = anatomyYaml.map(l=>{
+    const isActive = String(l.n) === String(activeHl);
+    return '<span class="yaml-line'+(isActive?' hot':'')+'">'+l.html.replace(/<span class="yaml-line"[^>]*>|<\\/span>$/g,'')+'</span>';
+  }).join('\\n');
+}
+renderAnatomy('1');
+document.querySelectorAll('.anatomy-label').forEach(lbl=>{
+  lbl.addEventListener('click', ()=>{
+    document.querySelectorAll('.anatomy-label').forEach(l=>l.classList.remove('active'));
+    lbl.classList.add('active');
+    renderAnatomy(lbl.getAttribute('data-hl'));
+  });
+});
+
+/* ---------------- builder ---------------- */
+const builderSteps = [
+  {id:'checkout', label:'Checkout code', desc:'Always required, pulls your repo onto the runner', locked:true,
+   yaml:'      - uses: actions/checkout@v4'},
+  {id:'setup', label:'Set up Python', desc:'Installs the language runtime on the runner', locked:false, checked:true,
+   yaml:'      - uses: actions/setup-python@v5\\n        with:\\n          python-version: \\'3.11\\''},
+  {id:'install', label:'Install dependencies', desc:'pip install everything your app needs', locked:false, checked:true,
+   yaml:'      - run: pip install -r requirements.txt'},
+  {id:'lint', label:'Lint', desc:'Catch style and obvious error issues before tests even run', locked:false, checked:false,
+   yaml:'      - run: ruff check .'},
+  {id:'test', label:'Run tests', desc:'The core of CI, this is what actually catches bugs', locked:false, checked:true,
+   yaml:'      - run: pytest'},
+  {id:'dockerbuild', label:'Build Docker image', desc:'Package the app into a reproducible image', locked:false, checked:false,
+   yaml:'      - uses: docker/build-push-action@v6\\n        with:\\n          push: false\\n          tags: myapp:\${{ github.sha }}'},
+  {id:'dockerpush', label:'Push image to registry', desc:'Requires build to be checked, uploads the tagged image', locked:false, checked:false,
+   yaml:'      - uses: docker/login-action@v3\\n        with:\\n          username: \${{ secrets.REGISTRY_USER }}\\n          password: \${{ secrets.REGISTRY_TOKEN }}\\n      - uses: docker/build-push-action@v6\\n        with:\\n          push: true\\n          tags: myapp:\${{ github.sha }}'},
+  {id:'deploy', label:'Deploy', desc:'Requires push to be checked, tells your host to pull and run the new image', locked:false, checked:false,
+   yaml:'      - run: curl -X POST $DEPLOY_HOOK_URL'}
+];
+
+const stepOptionsEl = document.getElementById('stepOptions');
+builderSteps.forEach(step=>{
+  const row = document.createElement('label');
+  row.className = 'step-option' + (step.locked ? ' locked':'');
+  row.innerHTML = '<input type="checkbox" data-id="'+step.id+'" '+
+    ((step.locked||step.checked)?'checked':'') + (step.locked?' disabled':'') + '>' +
+    '<div class="stxt"><b>'+step.label+'</b><span>'+step.desc+'</span></div>';
+  stepOptionsEl.appendChild(row);
+});
+
+function renderBuilder(){
+  let lines = [
+    'name: CI/CD',
+    '',
+    'on:',
+    '  push:',
+    '    branches: [main]',
+    '',
+    'jobs:',
+    '  pipeline:',
+    '    runs-on: ubuntu-latest',
+    '    steps:'
+  ];
+  builderSteps.forEach(step=>{
+    const cb = document.querySelector('input[data-id="'+step.id+'"]');
+    if(cb.checked){
+      lines.push(step.yaml);
+    }
+  });
+  document.getElementById('builderYaml').textContent = lines.join('\\n');
+}
+document.querySelectorAll('#stepOptions input').forEach(cb=>{
+  cb.addEventListener('change', ()=>{
+    // dependency logic: dockerpush needs dockerbuild, deploy needs dockerpush
+    const push = document.querySelector('input[data-id="dockerpush"]');
+    const build = document.querySelector('input[data-id="dockerbuild"]');
+    const deploy = document.querySelector('input[data-id="deploy"]');
+    if(push.checked) build.checked = true;
+    if(deploy.checked) push.checked = true, build.checked = true;
+    if(!build.checked){ push.checked = false; deploy.checked = false; }
+    if(!push.checked){ deploy.checked = false; }
+    renderBuilder();
+  });
+});
+renderBuilder();
+
+/* ---------------- quiz ---------------- */
+document.querySelectorAll('.quiz').forEach(q=>{
+  const opts = q.querySelectorAll('.quiz-opt');
+  const feedback = q.querySelector('.quiz-feedback');
+  let answered = false;
+  opts.forEach(opt=>{
+    opt.addEventListener('click', ()=>{
+      if(answered) return;
+      answered = true;
+      const correct = opt.getAttribute('data-correct') === 'true';
+      opts.forEach(o=>{
+        if(o.getAttribute('data-correct')==='true') o.classList.add('correct');
+        else if(o===opt) o.classList.add('wrong');
+      });
+      feedback.textContent = correct
+        ? "Exactly right."
+        : "Not quite, the correct answer is highlighted above.";
+      feedback.classList.add('show');
+    });
+  });
+});
+
+/* ---------------- accordion ---------------- */
+const accordionData = [
+  {title:'on: push / pull_request', body:'This decides when the whole workflow runs. Pushing to main runs it, and so does opening a pull request against main, which lets you see test results before you even merge.'},
+  {title:'jobs.test', body:'This job runs on every trigger. It checks out the code, installs Python, installs dependencies, then runs pytest. If pytest exits with a non-zero code, this job fails and everything downstream is skipped.'},
+  {title:'jobs.build-and-push', body:'This job only runs if test succeeds (needs: test) and only on main (if: github.ref). It logs into the registry using secrets stored in GitHub, not hardcoded, then builds and pushes an image tagged with the commit SHA.'},
+  {title:'jobs.deploy', body:'The final job, gated behind build-and-push succeeding. Here it just hits a webhook, in practice this might SSH into a server and restart a container, or call your hosting platform\\'s API to redeploy.'},
+  {title:'secrets.*', body:'Anything sensitive (tokens, passwords) is never written directly in the YAML. It\\'s stored in your repo\\'s Settings > Secrets, and referenced as \${{ secrets.NAME }}, which the pipeline injects at run time and never logs.'}
+];
+const accEl = document.getElementById('accordion');
+accordionData.forEach((item,i)=>{
+  const div = document.createElement('div');
+  div.className = 'acc-item';
+  div.innerHTML = '<div class="acc-head"><span><span class="num">0'+(i+1)+'</span>'+item.title+'</span><span class="acc-chevron">&#9660;</span></div>' +
+    '<div class="acc-body"><p class="muted" style="padding-top:10px;">'+item.body+'</p></div>';
+  div.querySelector('.acc-head').addEventListener('click', ()=>{
+    div.classList.toggle('open');
+  });
+  accEl.appendChild(div);
+});
+
+/* ---------------- deploy strategies ---------------- */
+const strategies = [
+  {name:'Rolling', desc:'Replace old servers with new ones a few at a time. Simple, some capacity is always available, but a bad release affects live users while it rolls out.', pattern:[1,1,0,0,0]},
+  {name:'Blue-Green', desc:'Run two full environments. Switch all traffic at once when the new one is verified. Instant rollback, but you pay for double the infrastructure briefly.', pattern:[1,1,1,0,0]},
+  {name:'Canary', desc:'Send a small slice of real traffic to the new version first. Watch for errors, then ramp up. Slowest, but safest for catching problems early.', pattern:[1,0,0,0,0]}
+];
+const stratGrid = document.getElementById('stratGrid');
+strategies.forEach(s=>{
+  const card = document.createElement('div');
+  card.className='strat-card';
+  const viz = s.pattern.map(v=>'<div class="svr" data-new="'+v+'"></div>').join('');
+  card.innerHTML = '<h3>'+s.name+'</h3><div class="strat-viz">'+viz+'</div><p class="muted" style="font-size:0.85rem;">'+s.desc+'</p>';
+  card.addEventListener('mouseenter', ()=>{
+    card.querySelectorAll('.svr').forEach(svr=>{
+      svr.style.background = svr.getAttribute('data-new')==='1' ? 'var(--green)' : 'var(--panel-2)';
+    });
+  });
+  card.addEventListener('mouseleave', ()=>{
+    card.querySelectorAll('.svr').forEach(svr=>{ svr.style.background='var(--panel-2)'; });
+  });
+  stratGrid.appendChild(card);
+});
+
+/* ---------------- roadmap ---------------- */
+const roadmap = [
+  'Write one test for your app and get pytest running locally first, if it doesn\\'t pass locally it won\\'t pass in CI',
+  'Add a .github/workflows/ci.yml with just checkout, setup, install, and pytest, push it and watch the Actions tab',
+  'Add a Dockerfile if you don\\'t have one, confirm docker build works on your machine before automating it',
+  'Extend the workflow to build the image on merges to main, using needs: to gate it behind the test job passing',
+  'Add registry credentials as GitHub Secrets, then add the push step',
+  'Pick a deploy target (a VM, Render, Fly.io, wherever) and wire the final step to pull and run the new tag'
+];
+const roadmapList = document.getElementById('roadmapList');
+roadmap.forEach((step,i)=>{
+  const div = document.createElement('div');
+  div.className='roadmap-item';
+  div.innerHTML = '<div class="idx">'+(i+1)+'</div><p style="margin:0;">'+step+'</p>';
+  roadmapList.appendChild(div);
+});
+<\/script>
+</body>
+</html>
+`;
+
+const files = {
+  'calculator.py': {
+    readonly:true, badge:'b-py', badgeText:'PY',
+    content:`def add(a, b):
+    return a + b
+
+def subtract(a, b):
+    return a - b
+
+def multiply(a, b):
+    return a * b
+
+def divide(a, b):
+    if b == 0:
+        raise ValueError("Cannot divide by zero")
+    return a / b
+`
+  },
+  'requirements.txt': {
+    readonly:true, badge:'b-txt', badgeText:'TXT',
+    content:`pytest==8.2.0\n`
+  },
+  'README.md': {
+    readonly:true, badge:'b-md', badgeText:'MD',
+    isReadme:true,
+    content:`# calculator-cicd-demo
+
+A tiny calculator library. Your job: wire up a real CI/CD pipeline for it.
+
+## Tasks
+1. Write tests in test_calculator.py
+2. Write a Dockerfile that packages the app
+3. Write the GitHub Actions workflow at .github/workflows/ci-cd.yml
+4. Run "git push" in the terminal below to trigger the pipeline against your files
+
+Use the CI/CD COACH panel on the right for hints and solutions.
+`
+  },
+  'test_calculator.py': {readonly:false, badge:'b-py', badgeText:'PY', content:`# Write your tests here.
+# Import what you need from calculator.py, then write a test_* function
+# for each operation. Use plain assert statements.
+`},
+  'Dockerfile': {readonly:false, badge:'b-docker', badgeText:'DK', content:`# Write your Dockerfile here.
+# Think in stages: base image -> workdir -> copy deps -> install -> copy app -> run
+`},
+  '.github/workflows/ci-cd.yml': {readonly:false, badge:'b-yml', badgeText:'YML', content:`# Write your GitHub Actions workflow here.
+# You need: a trigger (on:), a jobs: block, a runner (runs-on:), and steps:
+# that checkout the code, install deps, and run pytest.
+`}
+};
+
+const STUBS = {
+  'test_calculator.py': files['test_calculator.py'].content,
+  'Dockerfile': files['Dockerfile'].content,
+  '.github/workflows/ci-cd.yml': files['.github/workflows/ci-cd.yml'].content
+};
+
+const TASK_ORDER = ['test_calculator.py','Dockerfile','.github/workflows/ci-cd.yml'];
+let activeFile = 'calculator.py';
+let openTabs = ['README.md','calculator.py'];
+
+/* ---------------- file tree ---------------- */
+const treeGroups = [
+  {folder:null, items:['calculator.py','requirements.txt','README.md','test_calculator.py','Dockerfile']},
+  {folder:'.github/workflows', items:['.github/workflows/ci-cd.yml']}
+];
+
+function renderTree(){
+  const el = document.getElementById('fileTree');
+  el.innerHTML = '';
+  const flat = document.createElement('div');
+  ['README.md','calculator.py','requirements.txt','test_calculator.py','Dockerfile'].forEach(name=>{
+    flat.appendChild(fileRow(name, name));
+  });
+  el.appendChild(flat);
+  const folder = document.createElement('div');
+  folder.className = 'tree-folder';
+  folder.textContent = '\u25be .github/workflows';
+  el.appendChild(folder);
+  el.appendChild(fileRow('.github/workflows/ci-cd.yml', 'ci-cd.yml'));
+
+  const theoryRow = document.createElement('div');
+  theoryRow.className = 'tree-file';
+  theoryRow.innerHTML = '<span class="badge b-theory">TH</span><span>THEORY.md</span><span class="status" style="color:#f2a100;">open &#8599;</span>';
+  theoryRow.addEventListener('click', openTheory);
+  el.appendChild(theoryRow);
+
+  updateTreeStatuses();
+}
+
+function openTheory(){
+  const frame = document.getElementById('theoryFrame');
+  if(!frame.getAttribute('data-loaded')){
+    frame.srcdoc = THEORY_HTML;
+    frame.setAttribute('data-loaded','1');
+  }
+  document.getElementById('theoryOverlay').classList.add('open');
+}
+document.getElementById('abtnTheory').addEventListener('click', openTheory);
+document.getElementById('theoryClose').addEventListener('click', ()=>{
+  document.getElementById('theoryOverlay').classList.remove('open');
+});
+
+function fileRow(key, display){
+  const f = files[key];
+  const row = document.createElement('div');
+  row.className = 'tree-file';
+  row.dataset.key = key;
+  row.innerHTML = '<span class="badge '+f.badge+'">'+f.badgeText+'</span><span>'+display+'</span><span class="status" data-status-for="'+key+'"></span>';
+  row.addEventListener('click', ()=> openFile(key));
+  return row;
+}
+
+function updateTreeStatuses(){
+  TASK_ORDER.forEach(key=>{
+    const el = document.querySelector('[data-status-for="'+key.replace(/"/g,'')+'"]');
+    if(!el) return;
+    const res = validateFile(key, files[key].content);
+    el.textContent = res.pass ? '\u2713' : (files[key].content.trim().startsWith('#') ? '' : '\u25cf');
+    el.className = 'status ' + (res.pass ? 'done' : (files[key].content.trim().startsWith('#') ? 'todo' : 'todo'));
+  });
+}
+
+/* ---------------- tabs + editor ---------------- */
+function renderTabs(){
+  const bar = document.getElementById('tabbar');
+  bar.innerHTML = '';
+  openTabs.forEach(key=>{
+    const f = files[key];
+    const short = key.split('/').pop();
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (key===activeFile ? ' active':'');
+    tab.innerHTML = '<span class="badge '+f.badge+'" style="width:12px;height:12px;font-size:8px;">'+f.badgeText[0]+'</span><span>'+short+'</span>';
+    tab.addEventListener('click', ()=> openFile(key));
+    bar.appendChild(tab);
+  });
+}
+
+function openFile(key){
+  activeFile = key;
+  if(!openTabs.includes(key)) openTabs.push(key);
+  renderTabs();
+  document.querySelectorAll('.tree-file').forEach(r=>r.classList.toggle('selected', r.dataset.key===key));
+  const f = files[key];
+  const ed = document.getElementById('editor');
+  ed.value = f.content;
+  ed.disabled = !!f.readonly;
+  document.getElementById('statusFile').textContent = key;
+  syncGutter();
+  renderCoach();
+}
+
+function syncGutter(){
+  const ed = document.getElementById('editor');
+  const lines = ed.value.split('\n').length;
+  const gutter = document.getElementById('gutter');
+  let out = '';
+  for(let i=1;i<=lines;i++) out += i+'\n';
+  gutter.textContent = out;
+}
+
+document.getElementById('editor').addEventListener('input', (e)=>{
+  files[activeFile].content = e.target.value;
+  syncGutter();
+  if(TASK_ORDER.includes(activeFile)) updateTreeStatuses();
+  renderCoach();
+});
+document.getElementById('editor').addEventListener('scroll', (e)=>{
+  document.getElementById('gutter').scrollTop = e.target.scrollTop;
+});
+
+/* ---------------- terminal ---------------- */
+const term = document.getElementById('terminal');
+function log(text, cls){
+  const div = document.createElement('div');
+  div.className = 'tline ' + (cls||'');
+  div.textContent = text;
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+log('Welcome to the sandbox terminal. Nothing here touches a real server.', 'dim');
+log('Try "validate current file" as you work, then "git push" when all three files are ready.', 'dim');
+
+document.getElementById('btnClear').addEventListener('click', ()=>{
+  term.innerHTML='';
+  TASK_ORDER.forEach(key=>{ files[key].content = STUBS[key]; });
+  if(TASK_ORDER.includes(activeFile)){
+    document.getElementById('editor').value = files[activeFile].content;
+    syncGutter();
+  }
+  updateTreeStatuses();
+  renderCoach();
+  log('cleared. test_calculator.py, Dockerfile, and the workflow are back to blank stubs, write your own solution.', 'dim');
+});
+
+/* ---------------- validation ---------------- */
+function validateFile(key, content){
+  const c = content || '';
+  if(key === 'test_calculator.py'){
+    const checks = [
+      {label:'imports from calculator', ok: /from\s+calculator\s+import/.test(c) || /import\s+calculator/.test(c)},
+      {label:'at least 3 test_ functions', ok: (c.match(/def\s+test_/g)||[]).length >= 3},
+      {label:'uses assert statements', ok: (c.match(/assert\s/g)||[]).length >= 3},
+      {label:'covers divide-by-zero error case', ok: /pytest\.raises|ValueError/.test(c)}
+    ];
+    return {pass: checks.every(x=>x.ok), checks};
+  }
+  if(key === 'Dockerfile'){
+    const checks = [
+      {label:'FROM base image', ok: /^FROM\s+\S+/mi.test(c)},
+      {label:'WORKDIR set', ok: /^WORKDIR\s+\S+/mi.test(c)},
+      {label:'copies requirements before install', ok: /COPY\s+requirements\.txt/i.test(c)},
+      {label:'installs dependencies', ok: /RUN\s+pip install/i.test(c)},
+      {label:'copies app code', ok: /^COPY\s+\.\s+\./mi.test(c)},
+      {label:'has a CMD or ENTRYPOINT', ok: /^(CMD|ENTRYPOINT)\s/mi.test(c)}
+    ];
+    return {pass: checks.every(x=>x.ok), checks};
+  }
+  if(key === '.github/workflows/ci-cd.yml'){
+    const checks = [
+      {label:'has a trigger (on:)', ok: /^\s*on:/mi.test(c) && /push/.test(c)},
+      {label:'has a jobs: block', ok: /^\s*jobs:/mi.test(c)},
+      {label:'specifies runs-on', ok: /runs-on:/i.test(c)},
+      {label:'checks out the code', ok: /actions\/checkout/i.test(c)},
+      {label:'runs pytest', ok: /pytest/i.test(c)}
+    ];
+    return {pass: checks.every(x=>x.ok), checks};
+  }
+  return {pass:true, checks:[]};
+}
+
+document.getElementById('btnValidate').addEventListener('click', ()=>{
+  if(!TASK_ORDER.includes(activeFile)){
+    log(activeFile+' is a reference file, nothing to validate.', 'warn');
+    return;
+  }
+  log('validate '+activeFile, 'cmd');
+  const res = validateFile(activeFile, files[activeFile].content);
+  res.checks.forEach(c=>{
+    log((c.ok?'  \u2713 ':'  \u2717 ')+c.label, c.ok?'ok':'fail');
+  });
+  log(res.pass ? activeFile+' looks structurally solid.' : activeFile+' still needs work, see the red lines above.', res.pass?'ok':'warn');
+  updateTreeStatuses();
+  renderCoach();
+});
+
+document.getElementById('btnAutoSolve').addEventListener('click', async ()=>{
+  log('auto-solve: filling test_calculator.py, Dockerfile, and the workflow with working solutions', 'warn');
+  TASK_ORDER.forEach(key=>{
+    files[key].content = SOLUTIONS[key];
+  });
+  if(TASK_ORDER.includes(activeFile)){
+    document.getElementById('editor').value = files[activeFile].content;
+    syncGutter();
+  }
+  updateTreeStatuses();
+  renderCoach();
+  await wait(300);
+  log('all three files solved, now running the pipeline exactly like a real push', 'dim');
+  await wait(200);
+  document.getElementById('btnPush').click();
+});
+
+document.getElementById('btnPush').addEventListener('click', async ()=>{
+  document.getElementById('btnPush').disabled = true;
+  log('git add . && git commit -m "wire up pipeline" && git push origin main', 'cmd');
+  await wait(400);
+  log('Enumerating objects, done.', 'dim');
+  await wait(300);
+  log('remote: Triggering workflow .github/workflows/ci-cd.yml', 'dim');
+  await wait(500);
+  log('');
+  log('=== job: test ===', 'ok');
+  await wait(350);
+  log('  actions/checkout@v4 ... done', 'dim');
+  await wait(300);
+  log('  actions/setup-python@v5 (3.11) ... done', 'dim');
+  await wait(300);
+  log('  pip install -r requirements.txt ... done', 'dim');
+  await wait(400);
+  const testRes = validateFile('test_calculator.py', files['test_calculator.py'].content);
+  if(testRes.pass){
+    log('  pytest ... 5 passed', 'ok');
+  } else {
+    log('  pytest ... collected 0-2 usable tests', 'fail');
+    testRes.checks.filter(c=>!c.ok).forEach(c=> log('    missing: '+c.label, 'fail'));
+    log('job "test" failed. Pipeline stopped here, downstream jobs skipped.', 'fail');
+    document.getElementById('btnPush').disabled = false;
+    return;
+  }
+  await wait(400);
+  log('');
+  log('=== job: build-and-push (needs: test) ===', 'ok');
+  await wait(350);
+  const dockerRes = validateFile('Dockerfile', files['Dockerfile'].content);
+  if(dockerRes.pass){
+    log('  docker build -t calculator-app:$SHA . ... done', 'ok');
+    await wait(300);
+    log('  docker push calculator-app:$SHA ... done', 'ok');
+  } else {
+    log('  docker build -t calculator-app:$SHA . ... failed', 'fail');
+    dockerRes.checks.filter(c=>!c.ok).forEach(c=> log('    missing: '+c.label, 'fail'));
+    log('job "build-and-push" failed. Deploy skipped.', 'fail');
+    document.getElementById('btnPush').disabled = false;
+    return;
+  }
+  await wait(400);
+  log('');
+  const wfRes = validateFile('.github/workflows/ci-cd.yml', files['.github/workflows/ci-cd.yml'].content);
+  log('=== job: deploy (needs: build-and-push) ===', 'ok');
+  await wait(350);
+  if(wfRes.pass){
+    log('  curl -X POST $DEPLOY_HOOK_URL ... 200 OK', 'ok');
+    await wait(300);
+    log('');
+    log('Pipeline succeeded. calculator-app is live on main.', 'ok');
+  } else {
+    log('  workflow file itself is missing required structure', 'fail');
+    wfRes.checks.filter(c=>!c.ok).forEach(c=> log('    missing: '+c.label, 'fail'));
+    log('Pipeline could not run as defined.', 'fail');
+  }
+  document.getElementById('btnPush').disabled = false;
+  updateTreeStatuses();
+  renderCoach();
+});
+
+/* ---------------- coach panel ---------------- */
+const taskMeta = {
+  'test_calculator.py': {
+    n:1, title:'Write the tests',
+    hint:'Import add, subtract, multiply, divide from calculator. Write one test_ function per operation using assert. For divide by zero, use pytest.raises(ValueError).',
+  },
+  'Dockerfile': {
+    n:2, title:'Write the Dockerfile',
+    hint:'Start FROM python:3.11-slim, set WORKDIR, COPY requirements.txt first and RUN pip install (this caches better than copying everything at once), then COPY the rest, then CMD.',
+  },
+  '.github/workflows/ci-cd.yml': {
+    n:3, title:'Write the workflow',
+    hint:'You need on: (push to main), jobs:, a runs-on: runner, and steps: that checkout the code, set up Python, install deps, and run pytest. Add a second job for Docker if you want the full picture.',
+  }
+};
+
+function renderCoach(){
+  const body = document.getElementById('coachBody');
+  if(files[activeFile] && files[activeFile].isReadme){
+    body.innerHTML = renderReadme(files[activeFile].content);
+    return;
+  }
+  body.innerHTML = '';
+  const intro = document.createElement('div');
+  intro.className = 'readme-render';
+  intro.innerHTML = '<h2>Your three tasks</h2><p>Work through these in order. Everything you type is checked structurally, not run for real, this is a sandbox for learning the shape of a pipeline.</p>';
+  body.appendChild(intro);
+
+  TASK_ORDER.forEach(key=>{
+    const meta = taskMeta[key];
+    const res = validateFile(key, files[key].content);
+    const started = !files[key].content.trim().startsWith('#') || files[key].content.trim()==='';
+    const div = document.createElement('div');
+    div.className = 'task';
+    div.innerHTML =
+      '<div class="task-head"><span class="task-num'+(res.pass?' done':'')+'">'+(res.pass?'\u2713':meta.n)+'</span>'+meta.title+' <span style="margin-left:auto;color:var(--text-dim);font-weight:400;font-size:10px;">'+key.split('/').pop()+'</span></div>'+
+      '<div class="task-body">'+
+        '<div class="hint-'+meta.n+'" style="display:none;">'+meta.hint+'</div>'+
+        '<div class="task-actions">'+
+          '<button class="mini-btn" data-act="open" data-key="'+key+'">Open file</button>'+
+          '<button class="mini-btn" data-act="hint" data-num="'+meta.n+'">Show hint</button>'+
+          '<button class="mini-btn" data-act="solution" data-key="'+key+'">Show solution</button>'+
+          '<button class="mini-btn primary" data-act="insert" data-key="'+key+'">Insert solution</button>'+
+        '</div>'+
+      '</div>';
+    body.appendChild(div);
+  });
+
+  body.querySelectorAll('[data-act="open"]').forEach(b=> b.addEventListener('click', ()=> openFile(b.dataset.key)));
+  body.querySelectorAll('[data-act="hint"]').forEach(b=> b.addEventListener('click', ()=>{
+    const el = body.querySelector('.hint-'+b.dataset.num);
+    el.style.display = el.style.display==='none' ? 'block' : 'none';
+    el.style.marginTop = '8px';
+  }));
+  body.querySelectorAll('[data-act="solution"]').forEach(b=> b.addEventListener('click', ()=>{
+    const key = b.dataset.key;
+    const existing = document.getElementById('sol-'+btoa(key));
+    if(existing){ existing.remove(); return; }
+    const pre = document.createElement('pre');
+    pre.id = 'sol-'+btoa(key);
+    pre.style.cssText = 'background:#0e0e0e;border:1px solid #3c3c3c;border-radius:4px;padding:10px;margin-top:8px;font-size:11px;white-space:pre-wrap;color:#8fd6b4;max-height:220px;overflow:auto;';
+    pre.textContent = SOLUTIONS[key];
+    b.closest('.task-body').appendChild(pre);
+  }));
+  body.querySelectorAll('[data-act="insert"]').forEach(b=> b.addEventListener('click', ()=>{
+    const key = b.dataset.key;
+    files[key].content = SOLUTIONS[key];
+    if(activeFile === key){
+      document.getElementById('editor').value = SOLUTIONS[key];
+      syncGutter();
+    }
+    updateTreeStatuses();
+    renderCoach();
+  }));
+}
+
+function renderReadme(md){
+  const lines = md.split('\n');
+  let html = '<div class="readme-render">';
+  let inList = false;
+  lines.forEach(line=>{
+    if(line.startsWith('# ')){ html += '<h1>'+line.slice(2)+'</h1>'; return; }
+    if(line.startsWith('## ')){ if(inList){html+='</ol>'; inList=false;} html += '<h2>'+line.slice(3)+'</h2>'; return; }
+    if(/^\d+\./.test(line)){
+      if(!inList){ html += '<ol>'; inList = true; }
+      html += '<li>'+line.replace(/^\d+\.\s*/, '')+'</li>';
+      return;
+    }
+    if(inList){ html += '</ol>'; inList = false; }
+    if(line.trim()==='') return;
+    html += '<p>'+line.replace(/"([^"]+)"/g,'<code>$1</code>')+'</p>';
+  });
+  if(inList) html += '</ol>';
+  html += '</div>';
+  return html;
+}
+
+/* ---------------- init ---------------- */
+renderTree();
+renderTabs();
+openFile('README.md');
+</script>
+
+<script src="../../assets/course-nav.js"></script>
+</body>
+</html>

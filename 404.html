@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Not found — +Learning</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  html,body{
+    margin:0; height:100%;
+    background:#0B0D10; color:#E4E8EE;
+    font-family:'Inter',system-ui,sans-serif;
+  }
+  main{
+    min-height:100%;
+    display:grid; place-content:center;
+    text-align:center;
+    padding:32px;
+  }
+  .code{
+    font-family:'JetBrains Mono',monospace;
+    font-size:13px; letter-spacing:.16em;
+    color:#5D6674;
+    margin-bottom:20px;
+  }
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600; font-size:clamp(26px,5vw,36px);
+    letter-spacing:-0.02em;
+    margin:0 0 12px;
+  }
+  p{ margin:0 0 30px; color:#8B95A5; font-size:15.5px; line-height:1.6; max-width:44ch; }
+  a{
+    display:inline-block;
+    padding:10px 20px;
+    border:1px solid #242B34; border-radius:999px;
+    color:#E4E8EE; text-decoration:none;
+    font-size:14px; font-weight:500;
+    transition:border-color .16s, background .16s;
+  }
+  a:hover{ border-color:#6FD4E0; background:rgba(111,212,224,0.07); }
+</style>
+</head>
+<body>
+<main>
+  <div class="code">404 — NOT FOUND</div>
+  <h1>That page isn't in the library.</h1>
+  <p>The course may have been renamed, or the link was never right to begin with.</p>
+  <a href="/" id="home">← Back to all courses</a>
+</main>
+
+<script>
+  /* GitHub Pages serves this file for any bad path at any depth, so a relative
+     link can't work. On a project site (user.github.io/repo/) the hub lives at
+     /repo/, not at /; derive it instead of hard-coding "/". */
+  (function () {
+    var seg = location.pathname.split("/").filter(Boolean)[0];
+    var projectSite = /\.github\.io$/i.test(location.hostname) && seg;
+    document.getElementById("home").href = projectSite ? "/" + seg + "/" : "/";
+  })();
+</script>
+</body>
+</html>

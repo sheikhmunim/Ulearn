@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rust in 7 Days — from ROS wrapper to systems engineer</title>
+
+<!-- course registry metadata — read by scripts/build-registry.mjs -->
+<meta name="course:title"       content="Rust in 7 Days">
+<meta name="course:description" content="Ownership, borrowing, traits, lifetimes and concurrency — the path from writing your first ROS wrapper to thinking like a systems engineer.">
+<meta name="course:tags"        content="languages,rust,systems">
+<meta name="course:level"       content="beginner">
+<meta name="course:duration"    content="7 days">
+<meta name="course:type"        content="course">
+<meta name="course:accent"      content="#D9601A">
+<meta name="course:icon"        content="🦀">
+<meta name="course:status"      content="live">
+
+<style>
+  :root{
+    --bg: #14120f;
+    --bg-panel: #1c1a16;
+    --bg-raised: #242119;
+    --rust: #d9601a;
+    --rust-dim: #8a4318;
+    --steel: #5b8fa8;
+    --text: #ede6da;
+    --text-dim: #a89e8c;
+    --text-faint: #6b6357;
+    --ok: #7fae6a;
+    --bad: #c1553f;
+    --mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --display: 'Space Grotesk', Georgia, serif;
+    --body: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--body);}
+  body{padding-bottom:60px;}
+  a{color:var(--steel);}
+
+  .rivet-bg{
+    background-image: radial-gradient(circle at 1px 1px, rgba(217,96,26,0.06) 1px, transparent 0);
+    background-size: 22px 22px;
+  }
+
+  header{
+    padding: 28px 20px 18px;
+    border-bottom: 1px solid #2c2820;
+    position: sticky; top:0; z-index:20;
+    background: rgba(20,18,15,0.96);
+    backdrop-filter: blur(6px);
+  }
+  .eyebrow{
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--rust);
+    display:flex; align-items:center; gap:8px;
+  }
+  .eyebrow::before{content:"▸"; color: var(--rust-dim);}
+  h1{
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 26px;
+    margin: 6px 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .subhead{ color: var(--text-dim); font-size: 14px; line-height:1.5; max-width: 60ch;}
+
+  .progress-wrap{
+    margin-top:16px;
+  }
+  .progress-track{
+    height: 6px; background: #2a271f; border-radius: 3px; overflow:hidden;
+    display:flex; gap:2px;
+  }
+  .progress-seg{
+    flex:1; background: #35312a; border-radius: 2px; transition: background 0.4s;
+  }
+  .progress-seg.done{ background: var(--rust); }
+  .progress-label{ font-family: var(--mono); font-size: 11px; color: var(--text-faint); margin-top:6px;}
+
+  nav.days{
+    display:flex; overflow-x:auto; gap:8px; padding: 14px 20px;
+    border-bottom: 1px solid #2c2820;
+    position: sticky; top: 118px; z-index:19;
+    background: rgba(20,18,15,0.96);
+    -ms-overflow-style: none; scrollbar-width: none;
+  }
+  nav.days::-webkit-scrollbar{display:none;}
+  .day-btn{
+    flex: 0 0 auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #35312a;
+    background: var(--bg-panel);
+    color: var(--text-dim);
+    cursor:pointer;
+    white-space: nowrap;
+    display:flex; align-items:center; gap:6px;
+  }
+  .day-btn .dot{width:6px;height:6px;border-radius:50%;background:#4a4536;}
+  .day-btn.done .dot{background:var(--ok);}
+  .day-btn.active{ border-color: var(--rust); color: var(--text); background: var(--bg-raised); }
+
+  main{ max-width: 720px; margin: 0 auto; padding: 24px 20px 40px; }
+
+  .day-panel{ display:none; }
+  .day-panel.active{ display:block; animation: fadein 0.35s ease; }
+  @keyframes fadein{ from{opacity:0; transform: translateY(6px);} to{opacity:1; transform:none;} }
+
+  .day-title{
+    font-family: var(--display);
+    font-size: 22px;
+    margin: 0 0 4px;
+  }
+  .day-tagline{ color: var(--rust); font-family: var(--mono); font-size: 12.5px; margin-bottom: 22px;}
+
+  section.block{
+    margin-bottom: 26px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid #241f18;
+  }
+  section.block:last-of-type{ border-bottom:none; }
+  .block-title{
+    font-weight:600; font-size: 15.5px; margin-bottom: 8px;
+    display:flex; align-items:baseline; gap:8px;
+  }
+  .block-title .idx{ font-family: var(--mono); color: var(--text-faint); font-size:12px;}
+  p{ line-height:1.65; font-size:14.5px; color: var(--text); margin: 8px 0;}
+  p.dim{ color: var(--text-dim); }
+
+  pre{
+    background: #0e0c0a;
+    border: 1px solid #2c2820;
+    border-left: 3px solid var(--rust-dim);
+    border-radius: 6px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12.8px;
+    line-height: 1.6;
+    margin: 10px 0;
+  }
+  code{ font-family: var(--mono); }
+  .comment{ color: var(--text-faint); }
+  .kw{ color: var(--rust); }
+  .ty{ color: var(--steel); }
+  .str{ color: var(--ok); }
+  .fn{ color: #e0b978; }
+
+  .callout{
+    background: rgba(91,143,168,0.08);
+    border: 1px solid rgba(91,143,168,0.25);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 13.5px;
+    color: var(--text-dim);
+    margin: 10px 0;
+  }
+  .callout b{ color: var(--steel); }
+
+  .quiz{
+    background: var(--bg-panel);
+    border: 1px solid #2c2820;
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 12px;
+  }
+  .quiz-q{ font-size: 14px; margin-bottom: 10px; font-weight:500;}
+  .quiz-opts{ display:flex; flex-direction:column; gap:8px; }
+  .opt-btn{
+    text-align:left;
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 12px;
+    background: var(--bg-raised);
+    border: 1px solid #35312a;
+    border-radius: 6px;
+    color: var(--text);
+    cursor:pointer;
+  }
+  .opt-btn:active{ transform: scale(0.99); }
+  .opt-btn.correct{ border-color: var(--ok); background: rgba(127,174,106,0.12); color: var(--ok);}
+  .opt-btn.wrong{ border-color: var(--bad); background: rgba(193,85,63,0.12); color: var(--bad);}
+  .opt-btn.disabled{ pointer-events:none; opacity:0.6; }
+  .feedback{ margin-top:10px; font-size:13px; padding:10px 12px; border-radius:6px; display:none; }
+  .feedback.show{ display:block; }
+  .feedback.ok{ background: rgba(127,174,106,0.1); color: var(--ok); }
+  .feedback.bad{ background: rgba(193,85,63,0.1); color: var(--bad); }
+
+  .fillblank input{
+    font-family: var(--mono); font-size:13px;
+    background: #0e0c0a; border:1px solid #35312a; border-radius:4px;
+    color: var(--text); padding: 5px 8px; width: 110px;
+  }
+  .check-btn{
+    margin-top:10px;
+    font-family: var(--mono); font-size: 12px;
+    background: var(--rust-dim); color: #f4ece0;
+    border:none; border-radius:6px; padding: 8px 14px; cursor:pointer;
+  }
+  .check-btn:hover{ background: var(--rust); }
+
+  .mark-done{
+    width:100%;
+    margin-top: 30px;
+    font-family: var(--mono); font-size: 13px; letter-spacing:0.03em;
+    background: var(--rust); color: #1c1108; font-weight:600;
+    border:none; border-radius: 8px; padding: 13px; cursor:pointer;
+  }
+  .mark-done.completed{ background: var(--ok); }
+  .mark-done:disabled{ opacity: 0.5; }
+
+  .footnote{ font-size: 12px; color: var(--text-faint); margin-top: 8px;}
+
+  ::selection{ background: rgba(217,96,26,0.3); }
+
+  @media (max-width: 480px){
+    h1{ font-size: 21px; }
+    .day-title{ font-size: 19px; }
+    main{ padding: 18px 14px 32px; }
+  }
+</style>
+</head>
+<body class="rivet-bg">
+
+<header>
+  <div class="eyebrow">rustc --edition 2024</div>
+  <h1>Rust in 7 Days</h1>
+  <div class="subhead">Basic to advanced, built for someone who already thinks in Python and C++ and is heading toward rclrs, ROS2, and Tauri. Tap through each day, answer the checks, keep your streak.</div>
+  <div class="progress-wrap">
+    <div class="progress-track" id="progressTrack"></div>
+    <div class="progress-label" id="progressLabel">0 / 7 days complete</div>
+  </div>
+</header>
+
+<nav class="days" id="dayNav"></nav>
+
+<main id="main"></main>
+
+<script>
+// ---------- Content model ----------
+const DAYS = [
+{
+  title: "Variables, types, and why the compiler is rude to you",
+  tag: "cargo new · let · mut · functions",
+  blocks: [
+    {
+      h: "Immutability is the default",
+      body: `<p>In Python everything is mutable unless you fight it. In Rust, everything is <b>immutable unless you say otherwise</b>. This single flip is the root of most "why won't this compile" moments this week.</p>`,
+      code: `<span class="kw">let</span> x = 5;
+x = 6; <span class="comment">// error: cannot assign twice to immutable variable</span>
+
+<span class="kw">let</span> <span class="kw">mut</span> y = 5;
+y = 6; <span class="comment">// fine, y opted into mutability</span>`,
+      callout: `<b>Why:</b> the compiler uses immutability-by-default to reason about your whole program at compile time instead of at runtime, like a Python interpreter would. This is the same instinct behind why Rust catches data races before your robot ever moves.`
+    },
+    {
+      h: "Types are inferred, but always there",
+      body: `<p>You rarely write types by hand, but every value has exactly one, decided at compile time. No duck typing, no runtime surprises.</p>`,
+      code: `<span class="kw">let</span> altitude: <span class="ty">f64</span> = 120.5;
+<span class="kw">let</span> node_id: <span class="ty">u32</span> = 7;
+<span class="kw">let</span> label: <span class="ty">&amp;str</span> = <span class="str">"lidar_front"</span>;
+<span class="kw">let</span> active = <span class="kw">true</span>; <span class="comment">// inferred as bool</span>`,
+    },
+    {
+      h: "Functions and expressions",
+      body: `<p>The last line without a semicolon is the return value. This trips up every C++/Python person in week one.</p>`,
+      code: `<span class="kw">fn</span> <span class="fn">clamp_speed</span>(v: <span class="ty">f64</span>, max: <span class="ty">f64</span>) -&gt; <span class="ty">f64</span> {
+    <span class="kw">if</span> v &gt; max { max } <span class="kw">else</span> { v }  <span class="comment">// no return, no semicolon</span>
+}`,
+      callout: `Add a semicolon to that last line and the function suddenly returns <code>()</code> (unit) instead of <code>f64</code>, and it won't compile. This bites everyone once, then never again.`
+    }
+  ],
+  quiz: [
+    { q: "What happens here?\n<code>let x = 5; x = 6;</code>", opts: ["Runs fine, x becomes 6","Compile error, x isn't mutable","Runtime panic"], correct: 1,
+      exp: "let alone never allows reassignment — you need `let mut x = 5;`." },
+    { q: "What does this function return?\n<code>fn f() -> i32 { let y = 3; y + 1 }</code>", opts: ["4","Nothing, it's missing a return","Compile error"], correct: 0,
+      exp: "The final expression with no semicolon is the return value — classic Rust idiom." }
+  ],
+  fill: { prompt: "Fix it: make this compile.", code: `let ___ count = 0;\ncount += 1;`, answer: "mut", hint: "The keyword that opts a variable into mutability." }
+},
+{
+  title: "Ownership — the idea that makes Rust, Rust",
+  tag: "move · clone · scope · drop",
+  blocks: [
+    {
+      h: "One owner at a time",
+      body: `<p>Every value has exactly one owner. When that owner goes out of scope, Rust automatically frees the memory. No garbage collector, no manual <code>free()</code>. This is why Rust has C-level performance without C's footguns.</p>`,
+      code: `<span class="kw">let</span> s1 = String::from(<span class="str">"chame"</span>);
+<span class="kw">let</span> s2 = s1;          <span class="comment">// ownership MOVES to s2</span>
+println!(<span class="str">"{}"</span>, s1);   <span class="comment">// error: s1 was moved, no longer valid</span>`,
+      callout: `In Python, <code>s2 = s1</code> gives you two names pointing at the same object — both stay valid. In Rust, that same line <b>invalidates s1</b>. This is the single biggest mental model shift this week.`
+    },
+    {
+      h: "Clone when you actually need two",
+      body: `<p>If you genuinely want two independent copies, say so explicitly.</p>`,
+      code: `<span class="kw">let</span> s1 = String::from(<span class="str">"chame"</span>);
+<span class="kw">let</span> s2 = s1.clone(); <span class="comment">// deep copy, both valid</span>
+println!(<span class="str">"{} {}"</span>, s1, s2); <span class="comment">// fine</span>`
+    },
+    {
+      h: "Simple types copy instead of move",
+      body: `<p>Types that live entirely on the stack and are cheap to duplicate (integers, floats, bools, chars) implement <code>Copy</code>, so this doesn't invalidate anything.</p>`,
+      code: `<span class="kw">let</span> a = 5;
+<span class="kw">let</span> b = a; <span class="comment">// a is copied, not moved — both still valid</span>
+println!(<span class="str">"{} {}"</span>, a, b); <span class="comment">// fine</span>`
+    }
+  ],
+  quiz: [
+    { q: "After `let s2 = s1;` where s1 is a String, what is s1?", opts: ["A valid copy of s2","Invalid — it moved to s2","Still valid, both point to the same data"], correct: 1,
+      exp: "Strings (heap-allocated) move by default. Only Copy types like integers duplicate silently." },
+    { q: "Which types are Copy, not Move, by default?", opts: ["String and Vec","i32, f64, bool, char","Both of the above"], correct: 1,
+      exp: "Stack-only, fixed-size, cheap-to-duplicate types implement Copy. Heap-backed types like String and Vec don't." }
+  ],
+  fill: { prompt: "Make this compile without moving s1 — use the method that deep-copies a String.", code: `let s1 = String::from("tiago");\nlet s2 = s1.___();\nprintln!("{} {}", s1, s2);`, answer: "clone", hint: "Deep copy method on String." }
+},
+{
+  title: "Borrowing and references",
+  tag: "&T · &mut T · the borrow checker",
+  blocks: [
+    {
+      h: "Borrow instead of taking ownership",
+      body: `<p>Passing a value into a function normally moves it. Most of the time you just want to <i>use</i> it, not own it — that's what references are for.</p>`,
+      code: `<span class="kw">fn</span> <span class="fn">battery_pct</span>(label: &amp;<span class="ty">String</span>) -&gt; <span class="ty">usize</span> {
+    label.len()
+}
+
+<span class="kw">let</span> id = String::from(<span class="str">"pepper_01"</span>);
+<span class="kw">let</span> n = battery_pct(&amp;id); <span class="comment">// borrow, don't move</span>
+println!(<span class="str">"{} {}"</span>, id, n);   <span class="comment">// id is still valid</span>`
+    },
+    {
+      h: "The one rule that prevents data races",
+      body: `<p>At any point you may have <b>either</b> one mutable reference <b>or</b> any number of immutable references — never both. The compiler enforces this at compile time, which is exactly the class of bug that plagues multi-threaded C++ robot controllers.</p>`,
+      code: `<span class="kw">let</span> <span class="kw">mut</span> speed = 10;
+<span class="kw">let</span> r1 = &amp;speed;
+<span class="kw">let</span> r2 = &amp;speed;      <span class="comment">// fine, multiple reads OK</span>
+<span class="kw">let</span> r3 = &amp;<span class="kw">mut</span> speed;  <span class="comment">// error: can't borrow mutably while r1/r2 are alive</span>`,
+      callout: `This is the exact bug class (concurrent read + write) that causes intermittent crashes in ROS nodes under load. Rust refuses to compile it instead of letting you debug it at 2am.`
+    }
+  ],
+  quiz: [
+    { q: "Why pass &String instead of String into a function you don't need to keep the value?", opts:["Faster typing","Avoids moving/losing ownership of the caller's variable","References are required by Rust syntax"], correct:1,
+      exp: "Borrowing lets the function use the value without taking ownership away from the caller." },
+    { q: "Which of these is illegal at the same time?", opts:["Two immutable references","One mutable + one immutable reference","Two separate owned variables"], correct:1,
+      exp: "Rust allows many readers OR one writer, never both simultaneously — this is compile-time race prevention." }
+  ],
+  fill: { prompt: "Change the parameter so this function borrows instead of taking ownership.", code: `fn print_len(s: ___ String) -> usize {\n    s.len()\n}`, answer: "&", hint: "The reference symbol." }
+},
+{
+  title: "Structs, enums, and pattern matching",
+  tag: "struct · enum · match · Option",
+  blocks: [
+    {
+      h: "Structs group related data",
+      body: `<p>Like a dataclass in Python or a plain struct in C++, but with methods attached via <code>impl</code>.</p>`,
+      code: `<span class="kw">struct</span> <span class="ty">RobotState</span> {
+    id: <span class="ty">String</span>,
+    battery: <span class="ty">f32</span>,
+    connected: <span class="ty">bool</span>,
+}
+
+<span class="kw">impl</span> <span class="ty">RobotState</span> {
+    <span class="kw">fn</span> <span class="fn">is_low</span>(&amp;self) -&gt; <span class="ty">bool</span> {
+        self.battery &lt; 20.0
+    }
+}`
+    },
+    {
+      h: "Enums are where Rust really shines",
+      body: `<p>Unlike C-style enums, Rust enums can carry data per variant. This is how Rust models "this OR that" without null pointers.</p>`,
+      code: `<span class="kw">enum</span> <span class="ty">SensorReading</span> {
+    Distance(<span class="ty">f32</span>),
+    Text(<span class="ty">String</span>),
+    Timeout,
+}`
+    },
+    {
+      h: "match forces you to handle every case",
+      body: `<p>The compiler checks exhaustiveness. Forget a case, it won't compile — no silent nulls slipping through, unlike an unchecked Python if/elif chain.</p>`,
+      code: `<span class="kw">fn</span> <span class="fn">describe</span>(r: <span class="ty">SensorReading</span>) -&gt; <span class="ty">String</span> {
+    <span class="kw">match</span> r {
+        SensorReading::Distance(d) =&gt; format!(<span class="str">"{d}m"</span>),
+        SensorReading::Text(t)     =&gt; t,
+        SensorReading::Timeout     =&gt; <span class="str">"no reading"</span>.to_string(),
+    }
+}`
+    },
+    {
+      h: "No null — Option<T> instead",
+      body: `<p>Rust has no <code>null</code>. Absence of a value is modeled explicitly with <code>Option&lt;T&gt;</code>, and the compiler forces you to handle the "nothing" case before you can use the value.</p>`,
+      code: `<span class="kw">let</span> maybe_id: <span class="ty">Option</span>&lt;<span class="ty">u32</span>&gt; = <span class="kw">None</span>;
+
+<span class="kw">match</span> maybe_id {
+    <span class="ty">Some</span>(id) =&gt; println!(<span class="str">"got {id}"</span>),
+    <span class="ty">None</span>    =&gt; println!(<span class="str">"no id yet"</span>),
+}`,
+      callout: `This is the direct fix for "NullPointerException" and Python's silent <code>None</code> attribute errors — the compiler won't let you forget to check.`
+    }
+  ],
+  quiz: [
+    { q: "What replaces null in Rust?", opts:["A special Null type","Option<T> with Some/None","Uninitialized memory, like C"], correct:1,
+      exp: "Option<T> makes absence explicit and forces handling at compile time." },
+    { q: "What happens if a match doesn't cover every enum variant?", opts:["Runtime panic on the missing case","Compile error — match must be exhaustive","It's allowed, missing cases return None"], correct:1,
+      exp: "Rust requires match arms to be exhaustive, or you add a `_ => ...` catch-all." }
+  ],
+  fill: { prompt: "Fill in the missing arm so this match compiles for an Option<i32>.", code: `match val {\n    Some(x) => println!("{x}"),\n    ___ => println!("nothing"),\n}`, answer: "None", hint: "The other variant of Option." }
+},
+{
+  title: "Error handling, collections, and traits",
+  tag: "Result<T,E> · Vec · HashMap · trait",
+  blocks: [
+    {
+      h: "Result<T, E> instead of exceptions",
+      body: `<p>Rust has no try/except. Fallible functions return <code>Result&lt;T, E&gt;</code>, and <code>?</code> propagates errors up cleanly.</p>`,
+      code: `<span class="kw">fn</span> <span class="fn">parse_battery</span>(s: &amp;<span class="ty">str</span>) -&gt; <span class="ty">Result</span>&lt;<span class="ty">f32</span>, std::num::ParseFloatError&gt; {
+    <span class="kw">let</span> v = s.parse::&lt;<span class="ty">f32</span>&gt;()?; <span class="comment">// ? returns early on Err</span>
+    <span class="ty">Ok</span>(v)
+}`,
+      callout: `Compare this to Python's try/except: in Rust, the possibility of failure is part of the function's <b>type signature</b>. Callers can't ignore it by accident.`
+    },
+    {
+      h: "Vec and HashMap",
+      body: `<p>Your everyday Python list and dict, statically typed.</p>`,
+      code: `<span class="kw">let</span> <span class="kw">mut</span> readings: <span class="ty">Vec</span>&lt;<span class="ty">f32</span>&gt; = <span class="ty">Vec</span>::new();
+readings.push(3.2);
+
+<span class="kw">use</span> std::collections::HashMap;
+<span class="kw">let</span> <span class="kw">mut</span> nodes: <span class="ty">HashMap</span>&lt;<span class="ty">String</span>, <span class="ty">f32</span>&gt; = HashMap::new();
+nodes.insert(<span class="str">"lidar"</span>.to_string(), 12.0);`
+    },
+    {
+      h: "Traits — Rust's interfaces",
+      body: `<p>A trait defines shared behavior, similar to a Python ABC or a C++ abstract base class, but resolved at compile time with zero runtime cost by default.</p>`,
+      code: `<span class="kw">trait</span> <span class="ty">Describable</span> {
+    <span class="kw">fn</span> <span class="fn">describe</span>(&amp;self) -&gt; <span class="ty">String</span>;
+}
+
+<span class="kw">impl</span> <span class="ty">Describable</span> <span class="kw">for</span> <span class="ty">RobotState</span> {
+    <span class="kw">fn</span> <span class="fn">describe</span>(&amp;self) -&gt; <span class="ty">String</span> {
+        format!(<span class="str">"{} @ {}%"</span>, self.id, self.battery)
+    }
+}`
+    }
+  ],
+  quiz: [
+    { q: "How does Rust signal a function can fail?", opts:["try/catch blocks","The return type is Result<T, E>","It throws a panic always"], correct:1,
+      exp: "Fallibility is encoded in the type system via Result, not exceptions." },
+    { q: "What does `?` do inside a function returning Result?", opts:["Ignores errors silently","Returns Err early if the expression failed, otherwise unwraps Ok","Prints a warning and continues"], correct:1,
+      exp: "The ? operator is short-hand error propagation — it's Rust's version of letting an exception bubble up." }
+  ],
+  fill: { prompt: "Add the operator that propagates the error instead of unwrapping manually.", code: `let v = s.parse::<f32>()___;`, answer: "?", hint: "One character. Propagates Err, unwraps Ok." }
+},
+{
+  title: "Generics, lifetimes, and concurrency",
+  tag: "<T> · 'a · Arc · Mutex · thread::spawn",
+  blocks: [
+    {
+      h: "Generics: write it once",
+      body: `<p>Same idea as C++ templates or Python's duck typing, but checked at compile time.</p>`,
+      code: `<span class="kw">fn</span> <span class="fn">largest</span>&lt;T: PartialOrd&gt;(list: &amp;[T]) -&gt; &amp;T {
+    <span class="kw">let</span> <span class="kw">mut</span> m = &amp;list[0];
+    <span class="kw">for</span> item <span class="kw">in</span> list {
+        <span class="kw">if</span> item &gt; m { m = item; }
+    }
+    m
+}`
+    },
+    {
+      h: "Lifetimes — the scary syntax that just answers one question",
+      body: `<p>"How long is this reference valid for?" That's it. The compiler usually infers it silently; you only write <code>'a</code> when a function returns a reference and the compiler can't tell which input it's borrowed from.</p>`,
+      code: `<span class="kw">fn</span> <span class="fn">longer</span>&lt;'a&gt;(x: &amp;'a <span class="ty">str</span>, y: &amp;'a <span class="ty">str</span>) -&gt; &amp;'a <span class="ty">str</span> {
+    <span class="kw">if</span> x.len() &gt; y.len() { x } <span class="kw">else</span> { y }
+}`,
+      callout: `Read <code>'a</code> as a label, not a type: "whatever the shorter of x and y's lifetime is, the output lives at most that long." It stops you returning a dangling reference — the Rust answer to C++'s use-after-free.`
+    },
+    {
+      h: "Fearless concurrency",
+      body: `<p>This is the payoff for everything above. The same ownership rules that stop bugs in single-threaded code make data races <b>impossible to compile</b> across threads.</p>`,
+      code: `<span class="kw">use</span> std::sync::{Arc, Mutex};
+<span class="kw">use</span> std::thread;
+
+<span class="kw">let</span> counter = Arc::new(Mutex::new(0));
+<span class="kw">let</span> <span class="kw">mut</span> handles = vec![];
+
+<span class="kw">for</span> _ <span class="kw">in</span> 0..4 {
+    <span class="kw">let</span> counter = Arc::clone(&amp;counter);
+    handles.push(thread::spawn(<span class="kw">move</span> || {
+        <span class="kw">let</span> <span class="kw">mut</span> n = counter.lock().unwrap();
+        *n += 1;
+    }));
+}
+<span class="kw">for</span> h <span class="kw">in</span> handles { h.join().unwrap(); }`,
+      callout: `<b>Arc</b> = shared ownership across threads (atomic reference counting). <b>Mutex</b> = only one thread mutates at a time. Forget the lock and it won't compile — not "might crash in production."`
+    }
+  ],
+  quiz: [
+    { q: "What question does a lifetime annotation ('a) actually answer?", opts:["What type is this variable?","How long is this reference guaranteed to be valid?","How many threads can access this?"], correct:1,
+      exp: "Lifetimes are purely about reference validity duration, not types or threading." },
+    { q: "What does Arc<Mutex<T>> give you across threads?", opts:["Faster execution always","Shared ownership + safe mutual exclusion, enforced at compile time","Automatic parallelism with no locks needed"], correct:1,
+      exp: "Arc handles shared ownership across threads; Mutex ensures only one thread mutates the data at a time." }
+  ],
+  fill: { prompt: "Wrap this so multiple threads can safely share and mutate it: `let data = ___::new(___::new(0));`", code: `let data = ___::new(___::new(0));`, answer: "Arc,Mutex", hint: "Two words, comma separated, in order: shared-ownership wrapper, then the lock." }
+},
+{
+  title: "Build something real — async, rclrs, and where you go next",
+  tag: "async/await · tokio · your PDF reader",
+  blocks: [
+    {
+      h: "async/await — same shape, different engine",
+      body: `<p>Rust's async looks like JS or Python's asyncio, but nothing runs until you hand it to a runtime like Tokio. This matters directly for you: Tokio is exactly what showed up in those robotics job listings you searched (Axum, Tokio, low-latency streaming).</p>`,
+      code: `<span class="kw">async fn</span> <span class="fn">fetch_reading</span>(url: &amp;<span class="ty">str</span>) -&gt; <span class="ty">Result</span>&lt;<span class="ty">String</span>, reqwest::Error&gt; {
+    <span class="kw">let</span> body = reqwest::get(url).<span class="kw">await</span>?.text().<span class="kw">await</span>?;
+    <span class="ty">Ok</span>(body)
+}
+
+<span class="comment">// entry point, powered by the Tokio runtime</span>
+#[tokio::main]
+<span class="kw">async fn</span> <span class="fn">main</span>() {
+    <span class="kw">let</span> r = fetch_reading(<span class="str">"http://10.234.6.19/status"</span>).<span class="kw">await</span>;
+}`
+    },
+    {
+      h: "Smart pointers you'll actually see in real code",
+      body: `<p><code>Box&lt;T&gt;</code>: put a value on the heap, one owner. <code>Rc&lt;T&gt;</code>: shared ownership, single-threaded. <code>Arc&lt;T&gt;</code>: shared ownership, thread-safe (you met this Day 6). These three cover almost every ownership puzzle you'll hit.</p>`,
+      code: `<span class="kw">let</span> boxed: <span class="ty">Box</span>&lt;<span class="ty">RobotState</span>&gt; = <span class="ty">Box</span>::new(state); <span class="comment">// heap-allocated, one owner</span>`
+    },
+    {
+      h: "Where rclrs fits",
+      body: `<p>rclrs (the Rust ROS 2 client library) is just Rust structs and traits wrapping the ROS 2 C API. Everything you learned this week (ownership for message buffers, traits for node behavior, Arc/Mutex for shared node state, async for service calls) is the actual vocabulary rclrs is written in. You're not learning a new paradigm for robotics, you're applying this one.</p>`,
+      callout: `Concretely: a ROS 2 publisher node in rclrs is a struct holding a <code>Node</code> and a <code>Publisher&lt;T&gt;</code>, wrapped in <code>Arc</code> if shared across callback threads. That sentence should now be fully readable to you.`
+    },
+    {
+      h: "Where this leaves your Tauri PDF reader",
+      body: `<p>Tauri apps are Rust on the backend, so: <code>struct</code> for your document state, <code>Result&lt;T, E&gt;</code> for every file-parsing step that can fail, <code>Arc&lt;Mutex&lt;T&gt;&gt;</code> if your RAG index is queried from multiple UI events at once, and <code>async fn</code> for the LLM calls so the UI thread never blocks. Every piece maps to something you covered this week.</p>`
+    }
+  ],
+  quiz: [
+    { q: "What actually executes an async fn in Rust?", opts:["Nothing extra needed, same as Python","A runtime like Tokio — async fns do nothing on their own until polled","The operating system scheduler directly"], correct:1,
+      exp: "Unlike Python's asyncio (built into the language runtime), Rust's async is a language feature with no built-in executor — you bring one, usually Tokio." },
+    { q: "For a Tauri app's RAG index accessed by multiple UI event handlers, which pattern from this week applies?", opts:["Plain Vec<T>","Arc<Mutex<T>>","Nothing needed, Tauri handles it"], correct:1,
+      exp: "Shared mutable state accessed from multiple call sites is the canonical Arc<Mutex<T>> case." }
+  ],
+  fill: { prompt: "Mark main as the Tokio async entry point.", code: `#[___]\nasync fn main() { }`, answer: "tokio::main", hint: "The attribute macro that wires up the Tokio runtime." }
+}
+];
+
+// ---------- State ----------
+let progress = {}; // {0: true, 1: false, ...}
+let currentDay = 0;
+
+async function loadProgress(){
+  try{
+    const r = await window.storage.get('rust-course-progress');
+    if(r && r.value){ progress = JSON.parse(r.value); }
+  }catch(e){ progress = {}; }
+  render();
+}
+async function saveProgress(){
+  try{ await window.storage.set('rust-course-progress', JSON.stringify(progress)); }
+  catch(e){ console.error('save failed', e); }
+}
+
+function completedCount(){
+  return Object.values(progress).filter(Boolean).length;
+}
+
+function renderNav(){
+  const nav = document.getElementById('dayNav');
+  nav.innerHTML = '';
+  DAYS.forEach((d, i)=>{
+    const btn = document.createElement('button');
+    btn.className = 'day-btn' + (i===currentDay ? ' active':'') + (progress[i] ? ' done':'');
+    btn.innerHTML = `<span class="dot"></span> Day ${i+1}`;
+    btn.onclick = ()=>{ currentDay = i; render(); };
+    nav.appendChild(btn);
+  });
+}
+
+function renderProgressBar(){
+  const track = document.getElementById('progressTrack');
+  track.innerHTML = '';
+  DAYS.forEach((d,i)=>{
+    const seg = document.createElement('div');
+    seg.className = 'progress-seg' + (progress[i] ? ' done':'');
+    track.appendChild(seg);
+  });
+  document.getElementById('progressLabel').textContent = `${completedCount()} / ${DAYS.length} days complete`;
+}
+
+function renderDay(){
+  const main = document.getElementById('main');
+  const d = DAYS[currentDay];
+  let html = `<div class="day-panel active">
+    <div class="day-title">Day ${currentDay+1}: ${d.title}</div>
+    <div class="day-tagline">${d.tag}</div>`;
+
+  d.blocks.forEach((b, bi)=>{
+    html += `<section class="block">
+      <div class="block-title"><span class="idx">${String(bi+1).padStart(2,'0')}</span> ${b.h}</div>
+      ${b.body || ''}
+      ${b.code ? `<pre><code>${b.code}</code></pre>` : ''}
+      ${b.callout ? `<div class="callout">${b.callout}</div>` : ''}
+    </section>`;
+  });
+
+  html += `<section class="block"><div class="block-title">Check your understanding</div>`;
+  d.quiz.forEach((q, qi)=>{
+    html += `<div class="quiz" data-day="${currentDay}" data-q="${qi}">
+      <div class="quiz-q">${q.q}</div>
+      <div class="quiz-opts">
+        ${q.opts.map((o,oi)=>`<button class="opt-btn" data-oi="${oi}">${o}</button>`).join('')}
+      </div>
+      <div class="feedback"></div>
+    </div>`;
+  });
+  html += `</section>`;
+
+  if(d.fill){
+    html += `<section class="block">
+      <div class="block-title">Fill the blank</div>
+      <p class="dim">${d.fill.prompt}</p>
+      <pre class="fillblank"><code>${escapeHtml(d.fill.code).replace('___', '<input type="text" id="fillInput" placeholder="?" autocomplete="off" autocapitalize="off" spellcheck="false">')}</code></pre>
+      <button class="check-btn" id="fillCheck">Check</button>
+      <div class="feedback" id="fillFeedback"></div>
+    </section>`;
+  }
+
+  html += `<button class="mark-done ${progress[currentDay] ? 'completed':''}" id="markDone">
+    ${progress[currentDay] ? '✓ Day complete' : 'Mark day complete'}
+  </button>`;
+
+  html += `</div>`;
+  main.innerHTML = html;
+
+  // wire quiz buttons
+  main.querySelectorAll('.quiz').forEach(qEl=>{
+    const qi = parseInt(qEl.dataset.q);
+    const qData = d.quiz[qi];
+    const opts = qEl.querySelectorAll('.opt-btn');
+    const fb = qEl.querySelector('.feedback');
+    opts.forEach(btn=>{
+      btn.onclick = ()=>{
+        const oi = parseInt(btn.dataset.oi);
+        opts.forEach(o=>o.classList.add('disabled'));
+        if(oi === qData.correct){
+          btn.classList.add('correct');
+          fb.textContent = '✓ ' + qData.exp;
+          fb.className = 'feedback show ok';
+        } else {
+          btn.classList.add('wrong');
+          opts[qData.correct].classList.add('correct');
+          fb.textContent = '✗ ' + qData.exp;
+          fb.className = 'feedback show bad';
+        }
+      };
+    });
+  });
+
+  // wire fill-blank
+  if(d.fill){
+    document.getElementById('fillCheck').onclick = ()=>{
+      const val = document.getElementById('fillInput').value.trim();
+      const answers = d.fill.answer.split(',').map(a=>a.trim());
+      const fb = document.getElementById('fillFeedback');
+      const isCorrect = answers.some(a => val === a || val.replace(/\s+/g,'') === a.replace(/\s+/g,''));
+      if(isCorrect){
+        fb.textContent = '✓ Correct.';
+        fb.className = 'feedback show ok';
+      } else {
+        fb.textContent = `✗ Hint: ${d.fill.hint}`;
+        fb.className = 'feedback show bad';
+      }
+    };
+  }
+
+  // wire mark done
+  document.getElementById('markDone').onclick = async ()=>{
+    progress[currentDay] = true;
+    await saveProgress();
+    renderNav();
+    renderProgressBar();
+    const btn = document.getElementById('markDone');
+    btn.textContent = '✓ Day complete';
+    btn.classList.add('completed');
+  };
+}
+
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function render(){
+  renderNav();
+  renderProgressBar();
+  renderDay();
+  window.scrollTo({top:0, behavior:'instant'});
+}
+
+loadProgress();
+</script>
+
+<script src="../../assets/course-nav.js"></script>
+</body>
+</html>

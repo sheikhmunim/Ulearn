@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>+Learning — interactive courses that run in your browser</title>
+<meta name="description" content="A small library of self-contained, interactive courses and simulators. No install, no signup — everything runs in the browser.">
+
+<meta property="og:title" content="+Learning">
+<meta property="og:description" content="Interactive courses and simulators that run entirely in your browser.">
+<meta property="og:type" content="website">
+
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/hub.css">
+</head>
+<body>
+
+<div class="glow" aria-hidden="true"></div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="brand">
+      <span class="brand-mark">+</span>
+      <span class="brand-name">Learning</span>
+    </div>
+    <h1>Things I learned, rebuilt so you can <em>run</em> them.</h1>
+    <p class="lede">
+      Every course here is a single self-contained page — interactive, offline-friendly,
+      no install and no signup. Open one and start.
+    </p>
+    <div class="stats" id="stats"></div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <nav class="filters" id="filters" aria-label="Filter courses by topic"></nav>
+
+  <div class="grid" id="grid"></div>
+
+  <p class="empty" id="empty" hidden>Nothing here yet for that topic.</p>
+
+</main>
+
+<footer class="wrap">
+  <p>
+    Built as an open learning repository — contributions and corrections welcome.
+    <a href="https://github.com" class="repo-link" id="repoLink">View the source</a>
+  </p>
+  <p class="fine">Content licensed CC BY-SA 4.0 · Code licensed MIT</p>
+</footer>
+
+<script src="data/courses.js"></script>
+<script src="assets/hub.js"></script>
+</body>
+</html>
