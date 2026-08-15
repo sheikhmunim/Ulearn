@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HOMELAB://BUILD-LOG</title>
+<!-- course registry metadata — read by scripts/build-registry.mjs -->
+<meta name="course:title"       content="Homelab Build Log">
+<meta name="course:description" content="Rack a spare machine, install Ubuntu Server, and walk out with SSH, a firewall, Docker, and a service exposed to the internet.">
+<meta name="course:tags"        content="homelab,self-hosting,hands-on">
+<meta name="course:level"       content="beginner">
+<meta name="course:duration"    content="1 weekend">
+<meta name="course:type"        content="lab">
+<meta name="course:accent"      content="#E8A33D">
+<meta name="course:icon"        content="🖥️">
+<meta name="course:status"      content="live">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#10161D;
+    --bg-2:#0C1116;
+    --panel:#182029;
+    --panel-2:#1F2933;
+    --border:#2A3540;
+    --border-soft:#212B35;
+    --text:#E7EDF3;
+    --text-dim:#8FA0AF;
+    --text-dimmer:#5C6B78;
+    --amber:#E8A33D;
+    --amber-dim:#7A5A26;
+    --amber-glow:rgba(232,163,61,0.35);
+    --teal:#4FD1C5;
+    --teal-dim:#2A6963;
+    --red:#E8614A;
+    --green:#6FCF97;
+    --mono:'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+    --sans:'IBM Plex Sans', -apple-system, sans-serif;
+    --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(232,163,61,0.06), transparent 40%),
+      radial-gradient(circle at 85% 15%, rgba(79,209,197,0.05), transparent 45%);
+    color:var(--text);
+    font-family:var(--sans);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--amber-glow); color:var(--text);}
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    background:rgba(12,17,22,0.92);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+    padding:14px 24px;
+  }
+  .topbar-inner{
+    max-width:1240px; margin:0 auto;
+    display:flex; align-items:center; justify-content:space-between; gap:20px;
+    flex-wrap:wrap;
+  }
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand-dot{
+    width:10px; height:10px; border-radius:50%;
+    background:var(--amber);
+    box-shadow:0 0 10px 2px var(--amber-glow);
+    animation:pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%,100%{opacity:1;}
+    50%{opacity:0.4;}
+  }
+  .brand-text{font-family:var(--mono); font-weight:600; font-size:15px; letter-spacing:0.5px;}
+  .brand-text .dim{color:var(--text-dim); font-weight:400;}
+
+  .progress-wrap{display:flex; align-items:center; gap:10px; min-width:220px;}
+  .progress-label{font-family:var(--mono); font-size:11px; color:var(--text-dim); white-space:nowrap;}
+  .progress-track{
+    flex:1; height:6px; background:var(--panel-2); border-radius:3px; overflow:hidden;
+    border:1px solid var(--border);
+  }
+  .progress-fill{
+    height:100%; width:0%;
+    background:linear-gradient(90deg, var(--amber-dim), var(--amber));
+    transition:width 0.4s ease;
+  }
+
+  /* ---------- Mode switch ---------- */
+  .mode-switch{
+    max-width:1240px; margin:0 auto; padding:20px 24px 0;
+    display:flex; gap:10px;
+  }
+  .mode-btn{
+    font-family:var(--mono); font-size:13px; font-weight:600;
+    padding:11px 20px; border-radius:6px 6px 0 0;
+    background:var(--panel); color:var(--text-dim);
+    border:1px solid var(--border); border-bottom:none;
+    cursor:pointer; letter-spacing:0.3px;
+    transition:all 0.15s ease;
+    display:flex; align-items:center; gap:8px;
+  }
+  .mode-btn:hover{color:var(--text);}
+  .mode-btn.active{
+    background:var(--bg); color:var(--amber);
+    border-color:var(--border);
+    box-shadow:inset 0 2px 0 var(--amber);
+  }
+  .mode-btn .tag{
+    font-size:9px; padding:2px 6px; border-radius:3px;
+    background:var(--panel-2); color:var(--text-dimmer);
+  }
+  .mode-btn.active .tag{background:var(--amber-dim); color:#1a1206;}
+
+  /* ---------- Shell ---------- */
+  .shell{
+    max-width:1240px; margin:0 auto;
+    border:1px solid var(--border);
+    background:var(--bg);
+    min-height:60vh;
+  }
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* ===================== OVERVIEW ===================== */
+  .hero{
+    padding:56px 40px 40px;
+    border-bottom:1px solid var(--border-soft);
+    display:grid; grid-template-columns:1.3fr 1fr; gap:40px; align-items:center;
+  }
+  .hero-eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:2px; color:var(--teal);
+    text-transform:uppercase; margin-bottom:14px;
+  }
+  .hero h1{
+    font-family:var(--mono); font-size:clamp(28px,4vw,42px); line-height:1.15; margin:0 0 16px;
+    font-weight:700;
+  }
+  .hero h1 span{color:var(--amber);}
+  .hero p{color:var(--text-dim); font-size:15.5px; line-height:1.7; max-width:52ch;}
+  .hero-cta{margin-top:22px; display:flex; gap:12px; flex-wrap:wrap;}
+  .btn{
+    font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:0.3px;
+    padding:12px 22px; border-radius:6px; cursor:pointer; border:1px solid transparent;
+    transition:all .15s ease;
+  }
+  .btn-primary{background:var(--amber); color:#1a1206; border-color:var(--amber);}
+  .btn-primary:hover{background:#f0b158; transform:translateY(-1px);}
+  .btn-ghost{background:transparent; color:var(--text); border-color:var(--border);}
+  .btn-ghost:hover{border-color:var(--text-dim);}
+
+  .rack{
+    background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:18px;
+    font-family:var(--mono);
+  }
+  .rack-header{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:10.5px; color:var(--text-dimmer); letter-spacing:1px; margin-bottom:12px;
+    padding-bottom:10px; border-bottom:1px dashed var(--border);
+  }
+  .rack-status{color:var(--green); font-weight:600;}
+  .rack-row{
+    display:flex; align-items:center; gap:10px; padding:8px 6px; border-radius:4px;
+    font-size:12.5px; cursor:pointer; transition:background .12s ease;
+  }
+  .rack-row:hover{background:var(--panel-2);}
+  .led{
+    width:8px; height:8px; border-radius:50%; flex-shrink:0;
+    background:var(--text-dimmer); box-shadow:none; transition:all .3s ease;
+  }
+  .led.done{background:var(--green); box-shadow:0 0 6px 1px rgba(111,207,151,0.6);}
+  .led.partial{background:var(--amber); box-shadow:0 0 6px 1px var(--amber-glow);}
+  .rack-row-name{flex:1; color:var(--text-dim);}
+  .rack-row.done .rack-row-name{color:var(--text);}
+  .rack-row-count{font-size:10.5px; color:var(--text-dimmer);}
+
+  .stack-map{padding:40px; border-bottom:1px solid var(--border-soft);}
+  .stack-map h2{font-family:var(--mono); font-size:13px; letter-spacing:1.5px; color:var(--text-dimmer); text-transform:uppercase; margin:0 0 24px;}
+  .flow{
+    display:flex; align-items:stretch; gap:0; flex-wrap:wrap;
+  }
+  .flow-node{
+    background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    padding:16px 18px; min-width:150px; flex:1;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .flow-node .k{font-family:var(--mono); font-size:10px; color:var(--teal); letter-spacing:1px;}
+  .flow-node .v{font-weight:600; font-size:14px;}
+  .flow-node .d{font-size:12px; color:var(--text-dim); line-height:1.5;}
+  .flow-arrow{
+    display:flex; align-items:center; justify-content:center; padding:0 10px;
+    color:var(--text-dimmer); font-family:var(--mono); font-size:18px;
+  }
+  @media (max-width:900px){
+    .flow{flex-direction:column;}
+    .flow-arrow{transform:rotate(90deg); padding:6px 0;}
+  }
+
+  .prereqs{padding:40px;}
+  .prereqs h2{font-family:var(--mono); font-size:13px; letter-spacing:1.5px; color:var(--text-dimmer); text-transform:uppercase; margin:0 0 20px;}
+  .prereq-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px;}
+  .prereq-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px;
+  }
+  .prereq-card .t{font-weight:600; font-size:14px; margin-bottom:6px;}
+  .prereq-card .d{font-size:12.5px; color:var(--text-dim); line-height:1.6;}
+
+  /* ===================== KNOWLEDGE BASE ===================== */
+  .kb-wrap{padding:40px;}
+  .kb-intro{max-width:70ch; color:var(--text-dim); font-size:14.5px; line-height:1.7; margin-bottom:32px;}
+  .kb-category{margin-bottom:14px;}
+  .kb-cat-header{
+    display:flex; align-items:center; gap:12px; padding:16px 18px;
+    background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    cursor:pointer; transition:border-color .15s ease;
+  }
+  .kb-cat-header:hover{border-color:var(--amber-dim);}
+  .kb-cat-header .idx{font-family:var(--mono); color:var(--amber); font-size:12px; font-weight:700;}
+  .kb-cat-header .title{font-weight:600; font-size:15px; flex:1;}
+  .kb-cat-header .count{font-family:var(--mono); font-size:11px; color:var(--text-dimmer);}
+  .kb-cat-header .chev{color:var(--text-dimmer); transition:transform .2s ease; font-size:12px;}
+  .kb-category.open .chev{transform:rotate(90deg);}
+  .kb-cat-body{
+    max-height:0; overflow:hidden; transition:max-height .3s ease;
+    border-left:1px solid var(--border-soft); margin-left:26px;
+  }
+  .kb-category.open .kb-cat-body{max-height:4000px;}
+  .kb-item{padding:18px 20px 18px 22px;}
+  .kb-item + .kb-item{border-top:1px dashed var(--border-soft);}
+  .kb-item .q{font-weight:600; font-size:14px; margin-bottom:8px; color:var(--text);}
+  .kb-item .a{font-size:13.5px; color:var(--text-dim); line-height:1.75;}
+  .kb-item .a code{
+    font-family:var(--mono); background:var(--panel-2); padding:1px 6px; border-radius:4px;
+    font-size:12.5px; color:var(--teal); border:1px solid var(--border-soft);
+  }
+  .kb-item .callout{
+    margin-top:10px; padding:10px 14px; border-left:2px solid var(--amber);
+    background:rgba(232,163,61,0.06); font-size:12.5px; color:var(--text-dim); border-radius:0 6px 6px 0;
+  }
+
+  /* ===================== GUIDED LAB ===================== */
+  .lab-wrap{display:grid; grid-template-columns:260px 1fr; min-height:70vh;}
+  .lab-nav{
+    border-right:1px solid var(--border-soft); padding:24px 0;
+    background:var(--bg-2);
+  }
+  .lab-nav-title{
+    font-family:var(--mono); font-size:10px; letter-spacing:1.5px; color:var(--text-dimmer);
+    text-transform:uppercase; padding:0 20px 12px;
+  }
+  .lab-nav-item{
+    display:flex; align-items:center; gap:10px;
+    padding:11px 20px; cursor:pointer; font-size:13px; color:var(--text-dim);
+    border-left:2px solid transparent; transition:all .15s ease;
+  }
+  .lab-nav-item:hover{background:var(--panel); color:var(--text);}
+  .lab-nav-item.active{
+    border-left-color:var(--amber); background:var(--panel); color:var(--text); font-weight:600;
+  }
+  .lab-nav-item .phase-num{font-family:var(--mono); font-size:10.5px; color:var(--text-dimmer); width:16px;}
+  .lab-nav-item.active .phase-num{color:var(--amber);}
+
+  .lab-content{padding:36px 44px;}
+  .phase-header{margin-bottom:28px; padding-bottom:20px; border-bottom:1px solid var(--border-soft);}
+  .phase-eyebrow{font-family:var(--mono); font-size:11px; color:var(--teal); letter-spacing:1.5px; margin-bottom:8px;}
+  .phase-header h2{font-size:24px; margin:0 0 10px; font-weight:700;}
+  .phase-header .desc{color:var(--text-dim); font-size:14px; line-height:1.7; max-width:65ch;}
+
+  .step{
+    display:grid; grid-template-columns:36px 1fr; gap:16px; margin-bottom:28px;
+  }
+  .step-marker{display:flex; flex-direction:column; align-items:center;}
+  .step-check{
+    width:24px; height:24px; border-radius:50%; border:2px solid var(--border);
+    background:var(--panel); cursor:pointer; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    transition:all .15s ease; font-size:13px; color:transparent;
+  }
+  .step-check:hover{border-color:var(--amber);}
+  .step-check.checked{
+    background:var(--green); border-color:var(--green); color:#0C1116;
+  }
+  .step-line{width:2px; flex:1; background:var(--border-soft); margin-top:4px;}
+  .step-body{padding-bottom:4px;}
+  .step-title{font-weight:600; font-size:15px; margin-bottom:6px;}
+  .step.checked .step-title{color:var(--text-dim); text-decoration:line-through; text-decoration-color:var(--border);}
+  .step-why{font-size:13.5px; color:var(--text-dim); line-height:1.7; margin-bottom:12px;}
+  .step-why b{color:var(--text); font-weight:600;}
+
+  .codeblock{
+    position:relative; background:#0A0E12; border:1px solid var(--border); border-radius:8px;
+    margin-bottom:10px; overflow:hidden;
+  }
+  .codeblock-head{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 12px; background:var(--panel-2); border-bottom:1px solid var(--border);
+    font-family:var(--mono); font-size:10.5px; color:var(--text-dimmer); letter-spacing:0.5px;
+  }
+  .copy-btn{
+    font-family:var(--mono); font-size:10.5px; color:var(--text-dim); background:transparent;
+    border:1px solid var(--border); padding:3px 9px; border-radius:4px; cursor:pointer;
+    transition:all .15s ease;
+  }
+  .copy-btn:hover{border-color:var(--amber); color:var(--amber);}
+  .copy-btn.copied{border-color:var(--green); color:var(--green);}
+  .codeblock pre{
+    margin:0; padding:14px 16px; overflow-x:auto;
+    font-family:var(--mono); font-size:12.5px; line-height:1.65; color:#D3E8DC;
+  }
+  .codeblock pre .c1{color:var(--text-dimmer);}
+
+  .note{
+    display:flex; gap:10px; padding:11px 14px; border-radius:6px; font-size:12.5px;
+    line-height:1.6; margin-top:8px;
+  }
+  .note.tip{background:rgba(79,209,197,0.07); border-left:2px solid var(--teal); color:var(--text-dim);}
+  .note.warn{background:rgba(232,97,74,0.08); border-left:2px solid var(--red); color:var(--text-dim);}
+  .note b{color:var(--text);}
+
+  .phase-nav-buttons{
+    display:flex; justify-content:space-between; margin-top:36px; padding-top:20px;
+    border-top:1px solid var(--border-soft);
+  }
+
+  footer{
+    text-align:center; padding:30px; font-family:var(--mono); font-size:11px; color:var(--text-dimmer);
+  }
+
+  @media (max-width:800px){
+    .lab-wrap{grid-template-columns:1fr;}
+    .lab-nav{
+      display:flex; overflow-x:auto; border-right:none; border-bottom:1px solid var(--border-soft);
+      padding:14px 10px; gap:4px;
+    }
+    .lab-nav-title{display:none;}
+    .lab-nav-item{border-left:none; border-bottom:2px solid transparent; white-space:nowrap; padding:8px 12px;}
+    .lab-nav-item.active{border-bottom-color:var(--amber); border-left:none;}
+    .hero{grid-template-columns:1fr; padding:36px 20px;}
+    .stack-map, .prereqs, .kb-wrap{padding:28px 20px;}
+    .lab-content{padding:24px 20px;}
+  }
+</style>
+<script src="../../assets/progress.js"></script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <div class="brand-text">HOMELAB<span class="dim">://</span>BUILD-LOG</div>
+    </div>
+    <div class="progress-wrap">
+      <span class="progress-label" id="progressLabel">0 / 0 STEPS</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="mode-switch">
+  <button class="mode-btn active" data-view="overview">OVERVIEW <span class="tag">START HERE</span></button>
+  <button class="mode-btn" data-view="kb">KNOWLEDGE BASE <span class="tag">THE WHY</span></button>
+  <button class="mode-btn" data-view="lab">GUIDED LAB <span class="tag">THE HOW</span></button>
+</div>
+
+<div class="shell">
+
+  <!-- ===================== OVERVIEW ===================== -->
+  <div class="view active" id="view-overview">
+    <div class="hero">
+      <div>
+        <div class="hero-eyebrow">Self-Hosting, From Bare Metal to Public URL</div>
+        <h1>Turn a spare PC into a <span>server you own</span>, running an app the whole internet can reach.</h1>
+        <p>This is a full record of one real build: installing an OS with no monitor left plugged in, containerizing an app, buying a domain, and tunneling it to the public internet without ever touching a router. Read the <b style="color:var(--text)">Knowledge Base</b> to understand every concept first, then work the <b style="color:var(--text)">Guided Lab</b> to actually build it, one checkbox at a time.</p>
+        <div class="hero-cta">
+          <button class="btn btn-primary" onclick="switchView('lab')">Start the Lab →</button>
+          <button class="btn btn-ghost" onclick="switchView('kb')">Read the concepts first</button>
+        </div>
+      </div>
+      <div class="rack">
+        <div class="rack-header">
+          <span>SYSTEM STATUS</span>
+          <span class="rack-status" id="rackStatus">0/11 ONLINE</span>
+        </div>
+        <div id="rackList"></div>
+      </div>
+    </div>
+
+    <div class="stack-map">
+      <h2>What you end up with</h2>
+      <div class="flow">
+        <div class="flow-node"><div class="k">01 · HARDWARE</div><div class="v">Bare PC</div><div class="d">Any spare desktop or mini PC. No GPU required to start.</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node"><div class="k">02 · OS</div><div class="v">Ubuntu Server</div><div class="d">Headless, no desktop environment, managed entirely over SSH.</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node"><div class="k">03 · RUNTIME</div><div class="v">Docker</div><div class="d">Your app and its dependencies packaged into one portable container.</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node"><div class="k">04 · EXPOSURE</div><div class="v">Cloudflare Tunnel</div><div class="d">Public URL, zero open ports, zero router access needed.</div></div>
+      </div>
+    </div>
+
+    <div class="prereqs">
+      <h2>What you need before starting</h2>
+      <div class="prereq-grid">
+        <div class="prereq-card"><div class="t">A spare computer</div><div class="d">Any old desktop or mini PC. 4GB+ RAM, any modern CPU. No GPU needed for this path.</div></div>
+        <div class="prereq-card"><div class="t">USB drive, 8GB+</div><div class="d">To flash the Ubuntu Server installer onto and boot from.</div></div>
+        <div class="prereq-card"><div class="t">Ethernet, or a Linux-friendly WiFi adapter</div><div class="d">Wired is simplest. Wireless works too, covered in Phase 4.</div></div>
+        <div class="prereq-card"><div class="t">A laptop on the same network</div><div class="d">This is what you'll SSH in from once the server has no monitor attached.</div></div>
+        <div class="prereq-card"><div class="t">~$10–20 for a domain</div><div class="d">Needed only when you get to Phase 9, making the app public.</div></div>
+        <div class="prereq-card"><div class="t">Patience with a terminal</div><div class="d">Every step here is a typed command. No prior Linux experience assumed.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== KNOWLEDGE BASE ===================== -->
+  <div class="view" id="view-kb">
+    <div class="kb-wrap">
+      <p class="kb-intro">This is the reference layer. Nothing here asks you to type anything, it's here so that when the Guided Lab tells you to run a command, you already understand what it does and why it's safe. Skim it once end to end, then keep it open in a second tab while you work through the lab.</p>
+      <div id="kbList"></div>
+    </div>
+  </div>
+
+  <!-- ===================== GUIDED LAB ===================== -->
+  <div class="view" id="view-lab">
+    <div class="lab-wrap">
+      <div class="lab-nav">
+        <div class="lab-nav-title">11 Phases</div>
+        <div id="labNavList"></div>
+      </div>
+      <div class="lab-content" id="labContent"></div>
+    </div>
+  </div>
+
+</div>
+
+<footer>BUILT ON A REAL SERVER · EVERY COMMAND IN THIS FILE WAS ACTUALLY RUN · YOUR PROGRESS RESETS ON REFRESH, SO PACE YOURSELF</footer>
+
+<script>
+/* ============================================================
+   DATA
+   ============================================================ */
+
+const kbData = [
+  {
+    title: "Operating System Choices",
+    items: [
+      {
+        q: "Why Ubuntu Server instead of Ubuntu Desktop?",
+        a: "A server has no monitor attached most of its life, so a desktop environment (windows, a taskbar, a wallpaper) is pure overhead: it uses RAM and CPU nothing will ever look at, and it's one more thing that can break. Ubuntu Server skips all of that and boots straight to a command line, which is exactly what you manage remotely over SSH."
+      },
+      {
+        q: "Regular Server or Server (Minimized)?",
+        a: "Pick the regular install. Minimized strips out common utilities to shave off a few hundred MB, aimed at cloud VM images where every megabyte is billed. On your own hardware that saving is meaningless, and you'll spend your first week manually installing tools you assumed were already there. Take the fuller install."
+      },
+      {
+        q: "What does LTS mean, and why does it matter?",
+        a: "LTS stands for Long Term Support. Ubuntu ships a new LTS release roughly every two years and guarantees security patches for five years (longer with paid extended support). For a server you intend to leave running for years, LTS is the only sane choice, non-LTS releases stop receiving updates after about nine months."
+      },
+      {
+        q: "My Linux kernel is newer than the software repo I'm trying to use. What do I do?",
+        a: "Package repositories for third-party tools (like <code>cloudflared</code>) sometimes lag behind brand-new Ubuntu releases by a few weeks or months. If <code>apt</code> reports a 404 or missing Release file for your exact release codename, you can usually point the repo at the previous LTS's codename instead. Most Linux tools that don't touch kernel internals directly (an SSH-based tunnel client, for instance) work identically across adjacent LTS releases."
+      }
+    ]
+  },
+  {
+    title: "Networking Fundamentals",
+    items: [
+      {
+        q: "What is an IP address, and why does mine keep changing?",
+        a: "An IP address is how devices on a network find each other, like a phone number for your computer. Most home networks hand out IP addresses automatically via DHCP, and that address can change every time a device reconnects or the router restarts. That's annoying for a server, since you don't want to hunt for a new address every time you want to SSH in."
+      },
+      {
+        q: "What is SSH?",
+        a: "SSH (Secure Shell) is an encrypted remote-control connection to another computer's command line. Once it's set up, typing on your laptop is functionally the same as typing directly on the server's own keyboard, except the server can be in another room, another building, or another country."
+      },
+      {
+        q: "What is mDNS, and what does the .local suffix actually do?",
+        a: "mDNS (multicast DNS) lets devices on the same local network announce a hostname without needing a router or DNS server involved. Installing <code>avahi-daemon</code> makes your server answer to <code>your-hostname.local</code>. Your laptop resolves that name automatically, so you never need to know or check the server's IP address again, even after it changes."
+      },
+      {
+        q: "Why is this called a 'chicken-and-egg problem' for WiFi drivers?",
+        a: "Some WiFi adapter chipsets aren't built into the Linux kernel and need a driver package downloaded from the internet. But without WiFi working yet, the machine has no internet connection to download that driver with. The fix is always the same shape: get online some other way first (Ethernet, USB tethering from a phone) just long enough to install the driver, then switch over to WiFi permanently."
+      },
+      {
+        q: "Do I need router access to make my server reachable from the internet?",
+        a: "Not with the approach in this guide. Traditionally, remote access meant configuring 'port forwarding' on your router, opening a hole for inbound traffic. Cloudflare Tunnel flips this: your server makes an outbound-only connection out to Cloudflare, and the public URL routes back through that connection. Nothing needs to be opened on the router at all, which matters a lot if you're on a shared or landlord-controlled network."
+      }
+    ]
+  },
+  {
+    title: "Basic Security",
+    items: [
+      {
+        q: "What is a firewall, in plain terms?",
+        a: "A firewall is a gatekeeper between your server and the network. By default, once enabled, it blocks every incoming connection except the ones you've explicitly allowed. Without one, any service that starts listening on a port (deliberately or by accident) is reachable by anything else on the network."
+      },
+      {
+        q: "Why allow SSH before turning the firewall on, not after?",
+        a: "The moment a firewall activates, it switches from 'allow everything' to 'block everything except the allow-list'. If SSH isn't on that list first, you cut off your own remote access, and if there's no monitor plugged in anymore, there's no way back in except physically reconnecting one. Always allow SSH, then enable."
+      },
+      {
+        q: "Why switch from password to SSH-key login eventually?",
+        a: "A password can be guessed or brute-forced given enough attempts. An SSH key pair means logging in requires possessing a specific private file that never leaves your laptop, there's nothing to guess. It's the single highest-value hardening step after the basic firewall, and worth doing once you're comfortable with the terminal."
+      }
+    ]
+  },
+  {
+    title: "Containers & Docker",
+    items: [
+      {
+        q: "What is a container, actually?",
+        a: "A container packages an application together with every library and dependency it needs to run, isolated from whatever else is installed on the host machine. It's much lighter than a full virtual machine (no separate OS kernel to boot), but still keeps app A's dependencies from colliding with app B's."
+      },
+      {
+        q: "What's the difference between an image and a container?",
+        a: "An image is the frozen blueprint, the packaged filesystem and startup instructions. A container is a running instance of that image. You can start, stop, and delete containers freely; the image they came from stays untouched until you rebuild it."
+      },
+      {
+        q: "What does Docker Compose add on top of plain Docker?",
+        a: "Plain Docker manages one container at a time via long command-line flags. Compose lets you describe your entire stack (every service, its ports, its storage, how services talk to each other) in a single <code>docker-compose.yml</code> file, then bring the whole thing up or down with one command."
+      },
+      {
+        q: "Why give my user account access to Docker instead of always typing sudo?",
+        a: "By default, only <code>root</code> can talk to the Docker daemon, so every command needs <code>sudo</code> in front of it. Adding your user to the <code>docker</code> group grants that access directly, which is convenient, but worth knowing: it's functionally equivalent to giving that user root access to the whole machine, since containers can mount the host filesystem. Fine for a personal server, worth remembering on a shared one."
+      }
+    ]
+  },
+  {
+    title: "Going Public",
+    items: [
+      {
+        q: "What actually happens when I 'buy a domain'?",
+        a: "You're not buying ownership of anything physical, you're registering the exclusive right to use that name for a fixed period (usually one year, auto-renewing) in the global Domain Name System. The registrar (Namecheap, Cloudflare Registrar, etc.) is just the company that processes that registration on your behalf."
+      },
+      {
+        q: "What are nameservers, and why do I have to change them?",
+        a: "Nameservers are the authority that answers 'where does this domain point?' for the entire internet. Pointing your domain's nameservers at Cloudflare hands Cloudflare that authority, which is what lets Cloudflare manage DNS records and, later, wrap your traffic in a Tunnel."
+      },
+      {
+        q: "What is Cloudflare Tunnel actually doing under the hood?",
+        a: "The <code>cloudflared</code> program on your server opens an outbound connection to Cloudflare's edge network and keeps it alive. When someone visits your public URL, Cloudflare routes that request down through the already-open tunnel to your server, which forwards it to the right local port. No inbound firewall rule, no port forward, ever required."
+      },
+      {
+        q: "Why run cloudflared as a systemd service instead of just leaving the terminal command running?",
+        a: "A command run directly in your SSH session dies the instant that session closes, or the server reboots. Installing it as a systemd service tells the operating system to start it automatically at boot and keep it alive in the background, independent of whether you're logged in at all."
+      }
+    ]
+  },
+  {
+    title: "What Comes After This Guide",
+    items: [
+      {
+        q: "What is CI/CD, in one sentence?",
+        a: "CI/CD automates the path from 'I pushed code to GitHub' to 'the new version is live', so you stop manually SSH-ing in and re-running build commands by hand every time you change something."
+      },
+      {
+        q: "Why a self-hosted GitHub Actions runner instead of letting GitHub SSH into my server?",
+        a: "A self-hosted runner is a small agent installed on your server that connects outward to GitHub and polls for jobs, the same outbound-only pattern as Cloudflare Tunnel. GitHub never needs an inbound path into your server at all, which matters especially on a network where you don't control the router."
+      }
+    ]
+  }
+];
+
+const labPhases = [
+  {
+    title: "Flash the Installer",
+    eyebrow: "Phase 01 · Preparation",
+    desc: "Before anything touches the server itself, get the Ubuntu Server installer onto a bootable USB drive.",
+    steps: [
+      {
+        title: "Download Ubuntu Server LTS",
+        why: "Get the official ISO from <b>ubuntu.com/download/server</b>. Always use the current LTS release, not an interim one, for the long support window covered in the Knowledge Base.",
+      },
+      {
+        title: "Flash it to your USB drive",
+        why: "Use <b>Rufus</b> (Windows) or <b>balenaEtcher</b> (Windows/Mac/Linux). Select the ISO, select your USB drive, and confirm, this erases everything currently on that drive.",
+      }
+    ]
+  },
+  {
+    title: "Boot & Install",
+    eyebrow: "Phase 02 · Installation",
+    desc: "Get the installer running on the actual machine and walk through setup.",
+    steps: [
+      {
+        title: "Enter the boot menu",
+        why: "Plug the USB in, power the machine on, and immediately tap the boot-menu key repeatedly. This varies by motherboard, commonly <b>F12</b>, <b>F11</b>, or <b>Esc</b>, with <b>Del</b> or <b>F2</b> usually opening full BIOS setup instead. Select the USB drive, preferring an entry prefixed <b>UEFI:</b> if you see two.",
+      },
+      {
+        title: "Choose the regular Server install",
+        why: "Not the Minimized option, see the Knowledge Base for why. Follow the installer through language, keyboard layout, and network detection screens.",
+      },
+      {
+        title: "Set your username and enable OpenSSH",
+        why: "Pick a lowercase username with no spaces. When the installer offers to <b>Install OpenSSH server</b>, say yes, this is what makes remote access possible the moment setup finishes.",
+        warn: "If you miss this screen, you can still install it after first boot with <code style='font-family:var(--mono);color:var(--teal)'>sudo apt install openssh-server</code> from the machine directly."
+      },
+      {
+        title: "Finish install and reboot",
+        why: "Remove the USB drive when prompted and let it boot into your fresh install. Log in with the username and password you set.",
+      }
+    ]
+  },
+  {
+    title: "First SSH Connection",
+    eyebrow: "Phase 03 · Remote Access",
+    desc: "Confirm you can control the server from your laptop, so the monitor and keyboard can come off for good.",
+    steps: [
+      {
+        title: "Find the server's current IP address",
+        why: "Still at the server itself, with a monitor plugged in, run this to list network interfaces and their addresses.",
+        cmd: "ip a",
+      },
+      {
+        title: "Connect from your laptop",
+        why: "Open a terminal (PowerShell on Windows, Terminal on Mac/Linux) and connect using the username you created and the IP you just found.",
+        cmd: "ssh your-username@server-ip-address",
+      },
+      {
+        title: "Accept the fingerprint and confirm",
+        why: "The first connection asks you to confirm a host key fingerprint, type <code style='font-family:var(--mono);color:var(--teal)'>yes</code>. Enter your password when prompted. If your prompt changes to show the server's hostname, you're in, and the monitor can be disconnected."
+      }
+    ]
+  },
+  {
+    title: "Wireless Networking (Optional)",
+    eyebrow: "Phase 04 · Optional Branch",
+    desc: "Skip this whole phase if you're running Ethernet. Only needed if your server connects over WiFi.",
+    steps: [
+      {
+        title: "Plug in your USB WiFi adapter and check if it's already recognized",
+        why: "Many recent adapter chipsets are already built into the Linux kernel, so nothing further may be needed at all.",
+        cmd: "ip link show",
+        tip: "Look for a new interface, commonly named <code style='font-family:var(--mono);color:var(--teal)'>wlan0</code> or a <code style='font-family:var(--mono);color:var(--teal)'>wlx...</code> prefix. If it shows up here, skip straight to the netplan step below."
+      },
+      {
+        title: "If it's not recognized: get online temporarily to fetch the driver",
+        why: "This is the chicken-and-egg problem from the Knowledge Base. Plug in Ethernet temporarily, or tether your phone's hotspot over USB, just long enough to download and install the vendor's driver package for your exact adapter model.",
+        warn: "Search '<b style=\"color:var(--text)\">[your adapter model] Linux driver</b>' to find the manufacturer's install script. Most reputable Linux-compatible adapters publish a one-line installer."
+      },
+      {
+        title: "Configure the connection with netplan",
+        why: "Ubuntu Server uses netplan to manage network config from a YAML file. Find your config file first.",
+        cmd: "ls /etc/netplan/",
+      },
+      {
+        title: "Edit the netplan file",
+        why: "Open it and add a wifis block, swapping in your actual interface name, network name, and password.",
+        cmd: "sudo nano /etc/netplan/50-cloud-init.yaml",
+        extra: `network:
+  version: 2
+  wifis:
+    wlan0:
+      dhcp4: true
+      access-points:
+        "YourWiFiName":
+          password: "YourWiFiPassword"`
+      },
+      {
+        title: "Apply and confirm",
+        why: "Save with Ctrl+O, Enter, Ctrl+X, then apply the config and confirm you got an IP.",
+        cmd: "sudo netplan apply\nip a",
+      }
+    ]
+  },
+  {
+    title: "Never Hunt for an IP Again",
+    eyebrow: "Phase 05 · mDNS",
+    desc: "Set up hostname-based access so the server is reachable the same way every time, no matter how its IP changes.",
+    steps: [
+      {
+        title: "Install and enable avahi-daemon",
+        why: "This makes the server broadcast its hostname on the local network via mDNS, explained in the Knowledge Base.",
+        cmd: "sudo apt install avahi-daemon -y\nsudo systemctl enable --now avahi-daemon",
+      },
+      {
+        title: "Confirm it's running",
+        why: "You're looking for <code style='font-family:var(--mono);color:var(--teal)'>active (running)</code> in the output. Press <b>q</b> to exit.",
+        cmd: "systemctl status avahi-daemon",
+      },
+      {
+        title: "Test it from your laptop",
+        why: "Open a fresh terminal window (keep your current SSH session open as a fallback) and connect using the .local hostname instead of an IP.",
+        cmd: "ssh your-username@your-hostname.local",
+        tip: "If this connects, you can now unplug the monitor and keyboard permanently, and move the machine to wherever it's actually going to live."
+      }
+    ]
+  },
+  {
+    title: "Update & Lock the Door",
+    eyebrow: "Phase 06 · Hardening",
+    desc: "Patch the system and turn on a firewall before anything else touches the network.",
+    steps: [
+      {
+        title: "Update the system",
+        why: "Pull every security patch released since the installer image was built.",
+        cmd: "sudo apt update && sudo apt upgrade -y",
+      },
+      {
+        title: "Allow SSH through the firewall, before enabling it",
+        why: "Order matters here, see the Knowledge Base. Allowing SSH first means turning the firewall on next won't lock you out.",
+        cmd: "sudo ufw allow OpenSSH",
+      },
+      {
+        title: "Enable the firewall",
+        why: "Type y to confirm when prompted.",
+        cmd: "sudo ufw enable",
+      },
+      {
+        title: "Confirm the rule is active",
+        why: "You should see OpenSSH listed as ALLOW from Anywhere.",
+        cmd: "sudo ufw status",
+      }
+    ]
+  },
+  {
+    title: "Install Docker",
+    eyebrow: "Phase 07 · Runtime",
+    desc: "Add Docker's official repository and install the engine, CLI, and Compose plugin.",
+    steps: [
+      {
+        title: "Add Docker's repository and signing key",
+        why: "This trusts Docker's official packages rather than pulling from Ubuntu's default (often outdated) repo.",
+        cmd: `sudo apt update
+sudo apt install ca-certificates curl -y
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+echo \\
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \\
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \\
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update`,
+      },
+      {
+        title: "Install Docker Engine, CLI, and Compose",
+        why: "One command installs everything you need to build and run containers.",
+        cmd: "sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y",
+      },
+      {
+        title: "Verify the daemon is running",
+        why: "Look for active (running). Press q to exit.",
+        cmd: "sudo systemctl status docker",
+      },
+      {
+        title: "Let your user run Docker without sudo",
+        why: "Adds your account to the docker group. This requires logging out and back in to take effect, see the Knowledge Base for the tradeoff this involves.",
+        cmd: "sudo usermod -aG docker $USER\nexit",
+      },
+      {
+        title: "Reconnect and test",
+        why: "SSH back in, then run a tiny test container. A 'Hello from Docker!' message confirms everything, including no-sudo access, works end to end.",
+        cmd: "ssh your-username@your-hostname.local\ndocker run hello-world",
+      }
+    ]
+  },
+  {
+    title: "Deploy Your First App",
+    eyebrow: "Phase 08 · First Deployment",
+    desc: "Get a real containerized application built, running, and reachable on your local network.",
+    steps: [
+      {
+        title: "Create a project folder",
+        why: "Keeps every service's files, and its docker-compose.yml, organized in one place rather than scattered across your home directory.",
+        cmd: "mkdir ~/homeserver\ncd ~/homeserver",
+      },
+      {
+        title: "Clone your application's repository",
+        why: "Any project with a Dockerfile already in it works here. Swap in your own repo URL.",
+        cmd: "git clone https://github.com/your-username/your-app.git",
+      },
+      {
+        title: "Write a docker-compose.yml",
+        why: "This tells Compose to build an image from your app's Dockerfile and map it to a port on the host.",
+        cmd: "nano docker-compose.yml",
+        extra: `services:
+  your-app:
+    build: ./your-app
+    container_name: your-app
+    ports:
+      - "8080:8000"
+    restart: unless-stopped`
+      },
+      {
+        title: "Build and start it",
+        why: "Save with Ctrl+O, Enter, Ctrl+X, then bring the stack up. --build forces a fresh image build from the Dockerfile.",
+        cmd: "docker compose up -d --build",
+      },
+      {
+        title: "Confirm it's healthy",
+        why: "Check the container is running, and that memory usage sits comfortably under your machine's total RAM.",
+        cmd: "docker compose ps\ndocker stats --no-stream",
+      },
+      {
+        title: "Open it from your laptop's browser",
+        why: "This proves the app works locally before you expose it to the public internet.",
+        cmd: "http://your-hostname.local:8080",
+      }
+    ]
+  },
+  {
+    title: "Buy & Connect a Domain",
+    eyebrow: "Phase 09 · Going Public, Part 1",
+    desc: "Register a domain name and hand its DNS management over to Cloudflare.",
+    steps: [
+      {
+        title: "Register a domain",
+        why: "Any registrar works (Namecheap, Cloudflare Registrar, Porkbun). Watch for first-year promo pricing, always check the renewal price before committing. .com is the safest default for broad recognition.",
+      },
+      {
+        title: "Add the domain to Cloudflare",
+        why: "Create a free Cloudflare account at dash.cloudflare.com, click 'Add a domain', enter your domain, and select the Free plan. Cloudflare will scan for existing DNS records and offer to import them.",
+      },
+      {
+        title: "Copy the two nameservers Cloudflare gives you",
+        why: "They'll look something like name1.ns.cloudflare.com and name2.ns.cloudflare.com. You'll paste these into your registrar next.",
+      },
+      {
+        title: "Update nameservers at your registrar",
+        why: "Log into wherever you bought the domain, find the Nameservers section for that domain, switch it to Custom DNS, and enter Cloudflare's two nameservers, removing any old ones.",
+        warn: "This can take minutes to hours to propagate. Cloudflare emails you once the domain shows as Active."
+      }
+    ]
+  },
+  {
+    title: "Set Up Cloudflare Tunnel",
+    eyebrow: "Phase 10 · Going Public, Part 2",
+    desc: "Connect your local container to the public domain, with no port forwarding involved.",
+    steps: [
+      {
+        title: "Add Cloudflare's package repo and install cloudflared",
+        why: "This is the client that creates and maintains the outbound tunnel from your server.",
+        cmd: `curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+sudo apt update && sudo apt install cloudflared -y`,
+        warn: "If apt reports a 404 for your release codename, the repo may not have caught up to a brand-new Ubuntu release yet. Swap the codename in the second line for the previous LTS's codename (for example, noble instead of a newer one) and retry, see the Knowledge Base for why this is safe."
+      },
+      {
+        title: "Authenticate to your Cloudflare account",
+        why: "This opens a URL you'll paste into a browser to approve, then saves a certificate locally.",
+        cmd: "cloudflared tunnel login",
+      },
+      {
+        title: "Create a named tunnel",
+        why: "Pick a short, memorable name for your tunnel. This generates a unique ID and credentials file.",
+        cmd: "cloudflared tunnel create my-app",
+      },
+      {
+        title: "Route a subdomain to the tunnel",
+        why: "This creates the DNS record that connects your chosen subdomain to the tunnel you just made.",
+        cmd: "cloudflared tunnel route dns my-app my-app.yourdomain.com",
+      },
+      {
+        title: "Write the tunnel's config file",
+        why: "This tells cloudflared which local port to forward traffic to for each hostname. Use the actual tunnel ID and file paths from your own output above.",
+        cmd: "sudo mkdir -p /etc/cloudflared\nsudo nano /etc/cloudflared/config.yml",
+        extra: `tunnel: your-tunnel-id
+credentials-file: /home/your-username/.cloudflared/your-tunnel-id.json
+
+ingress:
+  - hostname: my-app.yourdomain.com
+    service: http://localhost:8080
+  - service: http_status:404`
+      },
+      {
+        title: "Test it in the foreground first",
+        why: "Save the file, then run the tunnel directly to confirm it connects cleanly before making it permanent.",
+        cmd: "cloudflared tunnel run my-app",
+        tip: "Look for 'Registered tunnel connection' and a healthy connectivity pre-check summary. Then visit your public URL from any device, even off your home network, to confirm it loads."
+      }
+    ]
+  },
+  {
+    title: "Make It Permanent",
+    eyebrow: "Phase 11 · Production",
+    desc: "Turn the tunnel into a background service that survives reboots and SSH disconnects.",
+    steps: [
+      {
+        title: "Stop the foreground test",
+        why: "Press Ctrl+C in the terminal running the tunnel.",
+      },
+      {
+        title: "Install it as a systemd service",
+        why: "This reads your config.yml and registers cloudflared to run automatically at boot.",
+        cmd: "sudo cloudflared service install",
+      },
+      {
+        title: "Enable and start it",
+        why: "This starts the service immediately and ensures it comes back up after any future reboot.",
+        cmd: "sudo systemctl enable --now cloudflared",
+      },
+      {
+        title: "Confirm it's active",
+        why: "Look for active (running) and enabled. Your app is now permanently, publicly live, entirely from your own hardware.",
+        cmd: "sudo systemctl status cloudflared",
+      }
+    ]
+  }
+];
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let currentLabPhase = 0;
+const stepState = {}; // key: "phaseIdx-stepIdx" -> bool
+
+function stepKey(p,s){ return p+"-"+s; }
+
+function totalSteps(){
+  return labPhases.reduce((sum,p)=>sum+p.steps.length,0);
+}
+function doneSteps(){
+  return Object.values(stepState).filter(Boolean).length;
+}
+function phaseDoneCount(pIdx){
+  return labPhases[pIdx].steps.filter((_,sIdx)=>stepState[stepKey(pIdx,sIdx)]).length;
+}
+
+/* ============================================================
+   RENDER: TOP PROGRESS
+   ============================================================ */
+function renderProgress(){
+  const total = totalSteps();
+  const done = doneSteps();
+  document.getElementById('progressLabel').textContent = done + " / " + total + " STEPS";
+  document.getElementById('progressFill').style.width = (total? (done/total*100):0) + "%";
+  if(window.Progress) Progress.report(done, total);
+
+  const onlinePhases = labPhases.filter((_,i)=>phaseDoneCount(i)===labPhases[i].steps.length).length;
+  document.getElementById('rackStatus').textContent = onlinePhases + "/" + labPhases.length + " ONLINE";
+}
+
+/* ============================================================
+   RENDER: OVERVIEW RACK
+   ============================================================ */
+function renderRack(){
+  const list = document.getElementById('rackList');
+  list.innerHTML = labPhases.map((p,i)=>{
+    const done = phaseDoneCount(i);
+    const total = p.steps.length;
+    let ledClass = 'led';
+    if(done===total) ledClass += ' done';
+    else if(done>0) ledClass += ' partial';
+    return `<div class="rack-row" onclick="switchView('lab'); jumpToPhase(${i})">
+      <div class="${ledClass}"></div>
+      <div class="rack-row-name">${String(i+1).padStart(2,'0')} ${p.title}</div>
+      <div class="rack-row-count">${done}/${total}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ============================================================
+   RENDER: KNOWLEDGE BASE
+   ============================================================ */
+function renderKB(){
+  const wrap = document.getElementById('kbList');
+  wrap.innerHTML = kbData.map((cat,ci)=>`
+    <div class="kb-category" id="kbcat-${ci}">
+      <div class="kb-cat-header" onclick="toggleKB(${ci})">
+        <span class="idx">${String(ci+1).padStart(2,'0')}</span>
+        <span class="title">${cat.title}</span>
+        <span class="count">${cat.items.length} topics</span>
+        <span class="chev">▸</span>
+      </div>
+      <div class="kb-cat-body">
+        ${cat.items.map(it=>`
+          <div class="kb-item">
+            <div class="q">${it.q}</div>
+            <div class="a">${it.a}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+function toggleKB(ci){
+  document.getElementById('kbcat-'+ci).classList.toggle('open');
+}
+
+/* ============================================================
+   RENDER: GUIDED LAB
+   ============================================================ */
+function renderLabNav(){
+  const nav = document.getElementById('labNavList');
+  nav.innerHTML = labPhases.map((p,i)=>{
+    const done = phaseDoneCount(i);
+    const total = p.steps.length;
+    const check = done===total ? '✓' : '';
+    return `<div class="lab-nav-item ${i===currentLabPhase?'active':''}" onclick="jumpToPhase(${i})">
+      <span class="phase-num">${check||String(i+1).padStart(2,'0')}</span>
+      <span>${p.title}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderLabContent(){
+  const p = labPhases[currentLabPhase];
+  const content = document.getElementById('labContent');
+  content.innerHTML = `
+    <div class="phase-header">
+      <div class="phase-eyebrow">${p.eyebrow}</div>
+      <h2>${p.title}</h2>
+      <div class="desc">${p.desc}</div>
+    </div>
+    <div id="stepsList">
+      ${p.steps.map((s,si)=>renderStep(currentLabPhase,si,s, si===p.steps.length-1)).join('')}
+    </div>
+    <div class="phase-nav-buttons">
+      <button class="btn btn-ghost" ${currentLabPhase===0?'disabled style="opacity:0.3;cursor:default;"':''} onclick="jumpToPhase(${currentLabPhase-1})">← Previous phase</button>
+      <button class="btn btn-primary" ${currentLabPhase===labPhases.length-1?'disabled style="opacity:0.3;cursor:default;"':''} onclick="jumpToPhase(${currentLabPhase+1})">Next phase →</button>
+    </div>
+  `;
+}
+
+function renderStep(pIdx, sIdx, s, isLast){
+  const key = stepKey(pIdx,sIdx);
+  const checked = !!stepState[key];
+  const codeId = "code-"+pIdx+"-"+sIdx;
+  let codeHtml = '';
+  if(s.cmd){
+    const fullCmd = s.extra ? s.cmd + "\n" + s.extra : s.cmd;
+    codeHtml = `
+      <div class="codeblock">
+        <div class="codeblock-head">
+          <span>TERMINAL</span>
+          <button class="copy-btn" onclick="copyCode('${codeId}', this)">COPY</button>
+        </div>
+        <pre id="${codeId}">${escapeHtml(fullCmd)}</pre>
+      </div>`;
+  }
+  let tipHtml = s.tip ? `<div class="note tip">💡 ${s.tip}</div>` : '';
+  let warnHtml = s.warn ? `<div class="note warn">⚠ ${s.warn}</div>` : '';
+
+  return `
+    <div class="step ${checked?'checked':''}">
+      <div class="step-marker">
+        <div class="step-check ${checked?'checked':''}" onclick="toggleStep(${pIdx},${sIdx})">✓</div>
+        ${isLast?'':'<div class="step-line"></div>'}
+      </div>
+      <div class="step-body">
+        <div class="step-title">${s.title}</div>
+        <div class="step-why">${s.why}</div>
+        ${codeHtml}
+        ${tipHtml}
+        ${warnHtml}
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml(str){
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function toggleStep(pIdx,sIdx){
+  const key = stepKey(pIdx,sIdx);
+  stepState[key] = !stepState[key];
+  renderAll();
+}
+
+function copyCode(id, btn){
+  const text = document.getElementById(id).textContent;
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+  btn.textContent = 'COPIED';
+  btn.classList.add('copied');
+  setTimeout(()=>{ btn.textContent='COPY'; btn.classList.remove('copied'); }, 1500);
+}
+
+function jumpToPhase(i){
+  if(i<0 || i>=labPhases.length) return;
+  currentLabPhase = i;
+  renderLabNav();
+  renderLabContent();
+  document.getElementById('labContent').scrollTop = 0;
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+/* ============================================================
+   VIEW SWITCHING
+   ============================================================ */
+function switchView(view){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+view).classList.add('active');
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`.mode-btn[data-view="${view}"]`).classList.add('active');
+}
+
+document.querySelectorAll('.mode-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> switchView(btn.dataset.view));
+});
+
+/* ============================================================
+   INIT
+   ============================================================ */
+function renderAll(){
+  renderProgress();
+  renderRack();
+  renderLabNav();
+  renderLabContent();
+}
+renderKB();
+renderAll();
+</script>
+<script src="../../assets/course-nav.js"></script>
+</body>
+</html>

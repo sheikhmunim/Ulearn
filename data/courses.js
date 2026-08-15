@@ -49,6 +49,20 @@ window.COURSES = [
     order: 100
   },
   {
+    slug: "homelab-build-log",
+    href: "courses/homelab-build-log/",
+    title: "Homelab Build Log",
+    description: "Rack a spare machine, install Ubuntu Server, and walk out with SSH, a firewall, Docker, and a service exposed to the internet.",
+    tags: ["homelab", "self-hosting", "hands-on"],
+    level: "beginner",
+    duration: "1 weekend",
+    type: "lab",
+    accent: "#E8A33D",
+    icon: "🖥️",
+    status: "live",
+    order: 100
+  },
+  {
     slug: "linux-terminal",
     href: "courses/linux-terminal/",
     title: "Linux Terminal",
