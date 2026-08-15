@@ -117,5 +117,19 @@ window.COURSES = [
     icon: "🗄️",
     status: "live",
     order: 100
+  },
+  {
+    slug: "ssh-key-guide",
+    href: "courses/ssh-key-guide/",
+    title: "SSH Keys: A Field Guide",
+    description: "Generate an SSH key pair, name it so it never gets confused with another, connect it to a server, and stop typing passwords.",
+    tags: ["systems", "ssh", "security"],
+    level: "beginner",
+    duration: "15 minutes",
+    type: "course",
+    accent: "#E1614D",
+    icon: "🔑",
+    status: "live",
+    order: 100
   }
 ];

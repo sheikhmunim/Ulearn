@@ -15,7 +15,8 @@ const LABELS = {
   "devops": "DevOps",
   "api": "APIs",
   "github-actions": "GitHub Actions",
-  "ddd": "DDD"
+  "ddd": "DDD",
+  "ssh": "SSH"
 };
 
 const label = (t) =>

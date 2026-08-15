@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSH KEYS://A field guide</title>
+<!-- course registry metadata — read by scripts/build-registry.mjs -->
+<meta name="course:title"       content="SSH Keys: A Field Guide">
+<meta name="course:description" content="Generate an SSH key pair, name it so it never gets confused with another, connect it to a server, and stop typing passwords.">
+<meta name="course:tags"        content="systems,ssh,security">
+<meta name="course:level"       content="beginner">
+<meta name="course:duration"    content="15 minutes">
+<meta name="course:type"        content="course">
+<meta name="course:accent"      content="#E1614D">
+<meta name="course:icon"        content="🔑">
+<meta name="course:status"      content="live">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0E1420;
+    --bg-2:#0A0F18;
+    --panel:#151D2B;
+    --panel-2:#1C2637;
+    --border:#293244;
+    --border-soft:#20293A;
+    --text:#E8EDF6;
+    --text-dim:#8B9AB0;
+    --text-dimmer:#57667C;
+    --gold:#E3B23C;
+    --gold-dim:#6B5522;
+    --gold-glow:rgba(227,178,60,0.32);
+    --cyan:#5BC8D6;
+    --red:#E1614D;
+    --green:#6FCF97;
+    --mono:'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+    --sans:'IBM Plex Sans', -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    background-image:
+      radial-gradient(circle at 10% -5%, rgba(227,178,60,0.07), transparent 40%),
+      radial-gradient(circle at 95% 10%, rgba(91,200,214,0.06), transparent 45%);
+    color:var(--text);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  ::selection{background:var(--gold-glow);}
+
+  .wrap{max-width:920px; margin:0 auto; padding:0 24px;}
+
+  /* ---------- Header ---------- */
+  header{
+    padding:64px 0 40px; border-bottom:1px solid var(--border-soft);
+  }
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:2.5px; color:var(--cyan);
+    text-transform:uppercase; margin-bottom:16px; display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow::before{content:''; width:20px; height:1px; background:var(--cyan);}
+  h1{
+    font-family:var(--mono); font-size:clamp(28px,5vw,44px); line-height:1.15; margin:0 0 18px;
+    font-weight:700;
+  }
+  h1 .k{color:var(--gold);}
+  header p{color:var(--text-dim); font-size:15.5px; line-height:1.75; max-width:62ch; margin:0;}
+
+  .keyviz{
+    display:flex; align-items:center; gap:14px; margin-top:28px;
+    font-family:var(--mono); font-size:12px; color:var(--text-dimmer);
+  }
+  .keyviz svg{flex-shrink:0;}
+
+  /* ---------- OS toggle ---------- */
+  .os-toggle-bar{
+    position:sticky; top:0; z-index:40;
+    background:rgba(10,15,24,0.94); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border-soft);
+    padding:14px 0;
+  }
+  .os-toggle{
+    display:flex; gap:8px; max-width:920px; margin:0 auto; padding:0 24px;
+  }
+  .os-btn{
+    flex:1; font-family:var(--mono); font-size:13px; font-weight:600;
+    padding:11px 16px; border-radius:8px;
+    background:var(--panel); color:var(--text-dim); border:1px solid var(--border);
+    cursor:pointer; transition:all .15s ease; display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .os-btn:hover{border-color:var(--gold-dim); color:var(--text);}
+  .os-btn.active{
+    background:var(--gold); color:#241a05; border-color:var(--gold);
+  }
+
+  /* ---------- Sections ---------- */
+  section{padding:44px 0; border-bottom:1px solid var(--border-soft);}
+  section:last-of-type{border-bottom:none;}
+  .sec-head{display:flex; align-items:baseline; gap:14px; margin-bottom:20px;}
+  .sec-num{font-family:var(--mono); color:var(--gold); font-size:13px; font-weight:700;}
+  .sec-title{font-size:22px; font-weight:700; margin:0;}
+  .sec-intro{color:var(--text-dim); font-size:14.5px; line-height:1.75; max-width:66ch; margin-bottom:22px;}
+  .sec-intro b{color:var(--text); font-weight:600;}
+  .sec-intro code, p code, li code{
+    font-family:var(--mono); background:var(--panel-2); padding:1px 6px; border-radius:4px;
+    font-size:12.5px; color:var(--cyan); border:1px solid var(--border-soft);
+  }
+
+  /* ---------- Platform-specific blocks ---------- */
+  .plat-block{display:none;}
+  .plat-block.show{display:block;}
+
+  .step{margin-bottom:22px;}
+  .step-title{font-weight:600; font-size:14.5px; margin-bottom:8px; display:flex; align-items:center; gap:8px;}
+  .step-title .n{
+    font-family:var(--mono); font-size:11px; color:var(--gold); background:var(--gold-dim);
+    width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; color:#241a05; font-weight:700;
+  }
+  .step-desc{font-size:13.5px; color:var(--text-dim); line-height:1.7; margin:0 0 10px 28px;}
+
+  .codeblock{
+    margin-left:28px;
+    position:relative; background:#080B10; border:1px solid var(--border); border-radius:8px;
+    overflow:hidden; margin-bottom:6px;
+  }
+  .codeblock-head{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 12px; background:var(--panel-2); border-bottom:1px solid var(--border);
+    font-family:var(--mono); font-size:10.5px; color:var(--text-dimmer); letter-spacing:0.5px;
+  }
+  .copy-btn{
+    font-family:var(--mono); font-size:10.5px; color:var(--text-dim); background:transparent;
+    border:1px solid var(--border); padding:3px 9px; border-radius:4px; cursor:pointer;
+    transition:all .15s ease;
+  }
+  .copy-btn:hover{border-color:var(--gold); color:var(--gold);}
+  .copy-btn.copied{border-color:var(--green); color:var(--green);}
+  .codeblock pre{
+    margin:0; padding:14px 16px; overflow-x:auto;
+    font-family:var(--mono); font-size:12.5px; line-height:1.65; color:#D9EFE4;
+  }
+
+  .note{
+    margin-left:28px;
+    display:flex; gap:10px; padding:11px 14px; border-radius:6px; font-size:12.5px;
+    line-height:1.65; margin-top:10px; margin-bottom:6px;
+  }
+  .note.tip{background:rgba(91,200,214,0.07); border-left:2px solid var(--cyan); color:var(--text-dim);}
+  .note.warn{background:rgba(225,97,77,0.08); border-left:2px solid var(--red); color:var(--text-dim);}
+  .note.gold{background:rgba(227,178,60,0.07); border-left:2px solid var(--gold); color:var(--text-dim);}
+  .note b{color:var(--text);}
+
+  /* ---------- Config file box ---------- */
+  .configfile{
+    margin-left:28px; background:#080B10; border:1px solid var(--border); border-radius:8px;
+    overflow:hidden; margin-bottom:10px;
+  }
+  .configfile-head{
+    padding:8px 12px; background:var(--panel-2); border-bottom:1px solid var(--border);
+    font-family:var(--mono); font-size:10.5px; color:var(--gold); letter-spacing:0.5px;
+  }
+  .configfile pre{margin:0; padding:14px 16px; font-family:var(--mono); font-size:12.5px; line-height:1.75; color:#D9EFE4; overflow-x:auto;}
+  .configfile .comment{color:var(--text-dimmer);}
+  .configfile .val{color:var(--cyan);}
+
+  /* ---------- Naming convention cards ---------- */
+  .card-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin-top:6px;}
+  .practice-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px 18px;
+  }
+  .practice-card.bad{border-color:rgba(225,97,77,0.35);}
+  .practice-card.good{border-color:rgba(111,207,151,0.3);}
+  .practice-card .tag{
+    font-family:var(--mono); font-size:10px; letter-spacing:1px; text-transform:uppercase;
+    padding:2px 8px; border-radius:4px; display:inline-block; margin-bottom:10px;
+  }
+  .practice-card.bad .tag{background:rgba(225,97,77,0.15); color:var(--red);}
+  .practice-card.good .tag{background:rgba(111,207,151,0.15); color:var(--green);}
+  .practice-card .file{font-family:var(--mono); font-size:13px; margin-bottom:6px;}
+  .practice-card .why{font-size:12px; color:var(--text-dim); line-height:1.6;}
+
+  /* ---------- Troubleshoot accordion ---------- */
+  .trouble-item{
+    border:1px solid var(--border); border-radius:8px; margin-bottom:10px; overflow:hidden;
+    background:var(--panel);
+  }
+  .trouble-q{
+    padding:14px 18px; cursor:pointer; display:flex; align-items:center; gap:12px;
+    font-weight:600; font-size:13.5px;
+  }
+  .trouble-q .sym{color:var(--red); font-family:var(--mono); font-size:13px;}
+  .trouble-q .chev{margin-left:auto; color:var(--text-dimmer); transition:transform .2s ease; font-size:11px;}
+  .trouble-item.open .chev{transform:rotate(90deg);}
+  .trouble-a{max-height:0; overflow:hidden; transition:max-height .3s ease;}
+  .trouble-item.open .trouble-a{max-height:400px;}
+  .trouble-a-inner{padding:0 18px 16px 44px; font-size:13px; color:var(--text-dim); line-height:1.7;}
+
+  footer{
+    text-align:center; padding:36px 24px; font-family:var(--mono); font-size:11px; color:var(--text-dimmer);
+  }
+
+  @media (max-width:640px){
+    .step-desc, .codeblock, .note, .configfile{margin-left:0;}
+    header{padding:44px 0 30px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Reference · Any OS, Any Server</div>
+    <h1>SSH keys, done <span class="k">once</span>, done <span class="k">right</span>.</h1>
+    <p>A locked door only works if the key is real, not a password someone can guess. This walks through generating an SSH key pair, naming it so it never gets confused with another one, connecting it to a server, and setting up a shortcut so you never type a password again. Pick your platform below, everything on the page updates to match.</p>
+    <div class="keyviz">
+      <svg width="140" height="16" viewBox="0 0 140 16" fill="none">
+        <circle cx="8" cy="8" r="7" stroke="#E3B23C" stroke-width="1.5"/>
+        <circle cx="8" cy="8" r="2.5" fill="#E3B23C"/>
+        <line x1="15" y1="8" x2="136" y2="8" stroke="#293244" stroke-width="1.5" stroke-dasharray="3 3"/>
+        <line x1="120" y1="8" x2="120" y2="3" stroke="#293244" stroke-width="1.5"/>
+        <line x1="128" y1="8" x2="128" y2="3" stroke="#293244" stroke-width="1.5"/>
+      </svg>
+      <span>PRIVATE KEY (yours, never shared) ⟶⟶⟶ PUBLIC KEY (goes on the server)</span>
+    </div>
+  </header>
+</div>
+
+<div class="os-toggle-bar">
+  <div class="os-toggle">
+    <button class="os-btn active" data-os="win">🪟 Windows (PowerShell)</button>
+    <button class="os-btn" data-os="unix">🐧 macOS / Linux (Terminal)</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ===================== SECTION 1: WHAT IS A KEY ===================== -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2 class="sec-title">What you're actually creating</h2></div>
+    <p class="sec-intro">Running one command produces <b>two files</b>: a private key that never leaves your machine, and a matching public key that's safe to hand out. They're mathematically linked, anything encrypted against the public key can only be unlocked by the private one. A server that trusts your public key will let you in the moment you prove you hold the matching private half, no password ever exchanged, nothing to guess or intercept.</p>
+    <div class="note gold"><b>Rule of thumb:</b> the file <b>without</b> <code>.pub</code> is the one you protect like a password. The file <b>with</b> <code>.pub</code> is the one you're meant to copy around freely.</div>
+  </section>
+
+  <!-- ===================== SECTION 2: GENERATE ===================== -->
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2 class="sec-title">Generate the key pair</h2></div>
+    <p class="sec-intro">We're using <b>ed25519</b>, the current recommended standard: smaller, faster, and at least as secure as the older RSA format, with no key-size decision to second-guess. Name it for its purpose right from the start, don't accept the generic default filename, that's what causes confusion later once you have more than one key.</p>
+
+    <div class="plat-block show" data-plat="win">
+      <div class="step">
+        <div class="step-title"><span class="n">1</span>Open PowerShell and run</div>
+        <div class="step-desc">Swap <code>homeserver</code> for whatever this key is actually for, e.g. <code>github</code>, <code>work-vps</code>.</div>
+        <div class="codeblock">
+          <div class="codeblock-head"><span>POWERSHELL</span><button class="copy-btn" onclick="copyCode('c1', this)">COPY</button></div>
+          <pre id="c1">ssh-keygen -t ed25519 -C "your-name-homeserver" -f $env:USERPROFILE\.ssh\id_ed25519_homeserver</pre>
+        </div>
+        <div class="note tip">💡 The <code>-f</code> flag sets the save path and filename directly, so PowerShell won't even ask, and you'll never land on the ambiguous default name.</div>
+      </div>
+      <div class="step">
+        <div class="step-title"><span class="n">2</span>Set a passphrase, or skip it</div>
+        <div class="step-desc">You'll be prompted to type a passphrase twice. This encrypts the private key file itself, so if your laptop is ever stolen, the key alone isn't enough to use it. Optional, but recommended for anything protecting real infrastructure. Press Enter twice to skip it if you'd rather prioritize convenience.</div>
+      </div>
+    </div>
+
+    <div class="plat-block" data-plat="unix">
+      <div class="step">
+        <div class="step-title"><span class="n">1</span>Open a terminal and run</div>
+        <div class="step-desc">Swap <code>homeserver</code> for whatever this key is actually for, e.g. <code>github</code>, <code>work-vps</code>.</div>
+        <div class="codeblock">
+          <div class="codeblock-head"><span>BASH / ZSH</span><button class="copy-btn" onclick="copyCode('c2', this)">COPY</button></div>
+          <pre id="c2">ssh-keygen -t ed25519 -C "your-name-homeserver" -f ~/.ssh/id_ed25519_homeserver</pre>
+        </div>
+        <div class="note tip">💡 The <code>-f</code> flag sets the save path and filename directly, so the terminal won't even ask, and you'll never land on the ambiguous default name.</div>
+      </div>
+      <div class="step">
+        <div class="step-title"><span class="n">2</span>Set a passphrase, or skip it</div>
+        <div class="step-desc">You'll be prompted to type a passphrase twice. This encrypts the private key file itself, so if your machine is ever compromised, the key alone isn't enough to use it. Optional, but recommended for anything protecting real infrastructure. Press Enter twice to skip it if you'd rather prioritize convenience.</div>
+      </div>
+      <div class="step">
+        <div class="step-title"><span class="n">3</span>Lock down the file permissions</div>
+        <div class="step-desc">Unlike Windows, Linux/macOS SSH refuses to use a private key that other users on the system could read. This is a one-time fix if you ever see a "permissions too open" error.</div>
+        <div class="codeblock">
+          <div class="codeblock-head"><span>BASH / ZSH</span><button class="copy-btn" onclick="copyCode('c3', this)">COPY</button></div>
+          <pre id="c3">chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_ed25519_homeserver
+chmod 644 ~/.ssh/id_ed25519_homeserver.pub</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION 3: NAMING ===================== -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2 class="sec-title">Naming, so you never lose track</h2></div>
+    <p class="sec-intro">Every key <code>ssh-keygen</code> generates without a custom name is called <code>id_ed25519</code>. Do that twice and the second run just asks if you want to overwrite the first. Name every key for what it unlocks, not what algorithm it uses, the algorithm is already in the filename.</p>
+    <div class="card-grid">
+      <div class="practice-card bad">
+        <span class="tag">Avoid</span>
+        <div class="file">id_ed25519</div>
+        <div class="why">Fine for a single key on a single machine. The moment you add a second purpose, this becomes ambiguous and risks being silently overwritten.</div>
+      </div>
+      <div class="practice-card good">
+        <span class="tag">Prefer</span>
+        <div class="file">id_ed25519_homeserver<br>id_ed25519_github<br>id_ed25519_workvps</div>
+        <div class="why">One glance at the filename tells you exactly what it's for. Scales cleanly to as many keys as you end up needing.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION 4: COPY TO SERVER ===================== -->
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><h2 class="sec-title">Put the public key on the server</h2></div>
+    <p class="sec-intro">This step tells a specific server to trust your new key. You still need password login working <b>once</b> to do this, it's how the server first learns your public key exists.</p>
+
+    <div class="plat-block show" data-plat="win">
+      <div class="step">
+        <div class="step-title"><span class="n">1</span>Pipe the public key to the server</div>
+        <div class="step-desc">Replace <code>user</code> and <code>server-address</code> with your actual login and hostname or IP.</div>
+        <div class="codeblock">
+          <div class="codeblock-head"><span>POWERSHELL</span><button class="copy-btn" onclick="copyCode('c4', this)">COPY</button></div>
+          <pre id="c4">type $env:USERPROFILE\.ssh\id_ed25519_homeserver.pub | ssh user@server-address "cat >> ~/.ssh/authorized_keys"</pre>
+        </div>
+        <div class="note tip">💡 This is the last time you'll need to type that account's password, assuming the connection test in the next section succeeds.</div>
+      </div>
+    </div>
+
+    <div class="plat-block" data-plat="unix">
+      <div class="step">
+        <div class="step-title"><span class="n">1</span>Use ssh-copy-id, the built-in tool for exactly this</div>
+        <div class="step-desc">Replace <code>user</code> and <code>server-address</code> with your actual login and hostname or IP.</div>
+        <div class="codeblock">
+          <div class="codeblock-head"><span>BASH / ZSH</span><button class="copy-btn" onclick="copyCode('c5', this)">COPY</button></div>
+          <pre id="c5">ssh-copy-id -i ~/.ssh/id_ed25519_homeserver.pub user@server-address</pre>
+        </div>
+        <div class="note tip">💡 If <code>ssh-copy-id</code> isn't available (rare, but happens on minimal systems), fall back to: <code>cat ~/.ssh/id_ed25519_homeserver.pub | ssh user@server-address "cat >> ~/.ssh/authorized_keys"</code></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION 5: CONFIG SHORTCUT ===================== -->
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><h2 class="sec-title">Set up a shortcut with an SSH config file</h2></div>
+    <p class="sec-intro">Instead of remembering the full username, hostname, and which key goes with it every time, teach SSH the pattern once. One config file can hold entries for every server and key you ever set up.</p>
+
+    <div class="plat-block show" data-plat="win">
+      <div class="step">
+        <div class="step-title"><span class="n">1</span>Open (or create) the config file</div>
+        <div class="codeblock">
+          <div class="codeblock-head"><span>POWERSHELL</span><button class="copy-btn" onclick="copyCode('c6', this)">COPY</button></div>
+          <pre id="c6">notepad $env:USERPROFILE\.ssh\config</pre>
+        </div>
+        <div class="note warn">⚠ If Notepad prompts to create the file, when you save, set <b>Save as type</b> to <b>All Files</b>. Otherwise Notepad silently appends <code>.txt</code>, and SSH will never find it.</div>
+      </div>
+    </div>
+
+    <div class="plat-block" data-plat="unix">
+      <div class="step">
+        <div class="step-title"><span class="n">1</span>Open (or create) the config file</div>
+        <div class="codeblock">
+          <div class="codeblock-head"><span>BASH / ZSH</span><button class="copy-btn" onclick="copyCode('c7', this)">COPY</button></div>
+          <pre id="c7">nano ~/.ssh/config</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-title"><span class="n">2</span>Add a Host block</div>
+      <div class="step-desc">Give it a short alias, this is what you'll type from now on instead of the full connection string. Add one block per server, stacked underneath each other.</div>
+      <div class="configfile">
+        <div class="configfile-head">~/.ssh/config</div>
+        <pre><span class="comment"># A short, memorable alias for this connection</span>
+Host <span class="val">homeserver</span>
+    HostName <span class="val">your-server.local</span>
+    User <span class="val">your-username</span>
+    IdentityFile <span class="val">~/.ssh/id_ed25519_homeserver</span>
+
+<span class="comment"># Add more servers the same way</span>
+Host <span class="val">github.com</span>
+    User <span class="val">git</span>
+    IdentityFile <span class="val">~/.ssh/id_ed25519_github</span></pre>
+      </div>
+      <div class="note tip">💡 On Windows, <code>~</code> inside this file is understood the same way, no need to write out the full <code>C:\Users\...</code> path here.</div>
+    </div>
+
+    <div class="step">
+      <div class="step-title"><span class="n">3</span>Connect using the alias</div>
+      <div class="codeblock">
+        <div class="codeblock-head"><span>ANY TERMINAL</span><button class="copy-btn" onclick="copyCode('c8', this)">COPY</button></div>
+        <pre id="c8">ssh homeserver</pre>
+      </div>
+      <div class="step-desc">If it connects without asking for a password (a passphrase prompt for the key itself is expected if you set one), you're fully set up.</div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION 6: TROUBLESHOOTING ===================== -->
+  <section>
+    <div class="sec-head"><span class="sec-num">06</span><h2 class="sec-title">When it doesn't work</h2></div>
+    <p class="sec-intro">The handful of things that actually go wrong, and the fix for each.</p>
+
+    <div id="troubleList"></div>
+  </section>
+
+  <!-- ===================== SECTION 7: BACKUP ===================== -->
+  <section>
+    <div class="sec-head"><span class="sec-num">07</span><h2 class="sec-title">Back up the private key</h2></div>
+    <p class="sec-intro">If you disable password login on a server (recommended, and covered in the homelab build log), losing this file <b>and</b> physical access to the server at the same time is the one true lockout scenario. Back it up somewhere durable before that becomes a problem instead of after.</p>
+    <div class="card-grid">
+      <div class="practice-card good">
+        <span class="tag">Good</span>
+        <div class="file">Password manager file attachment</div>
+        <div class="why">Encrypted, synced, recoverable even if the original machine is gone entirely.</div>
+      </div>
+      <div class="practice-card good">
+        <span class="tag">Good</span>
+        <div class="file">Encrypted USB drive</div>
+        <div class="why">Keep it separate from any installer USB drives you're also using.</div>
+      </div>
+      <div class="practice-card bad">
+        <span class="tag">Avoid</span>
+        <div class="file">Plain cloud storage, no passphrase set</div>
+        <div class="why">Anyone with access to that cloud account effectively has your server too. Fine only if the key itself has a passphrase.</div>
+      </div>
+      <div class="practice-card bad">
+        <span class="tag">Never</span>
+        <div class="file">Email, chat, or any ticket system</div>
+        <div class="why">These are not encrypted-at-rest by default and often get indexed or logged elsewhere.</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer>ONE KEY PAIR, NAMED CLEARLY, BACKED UP SOMEWHERE SAFE · THAT'S THE WHOLE DISCIPLINE</footer>
+
+<script>
+const troubleData = [
+  {
+    q: "ssh: Could not resolve hostname [alias]",
+    a: "Your config file almost certainly saved with a hidden extension. On Windows, Notepad defaults to appending <b>.txt</b> unless you explicitly set 'Save as type' to 'All Files'. Check with a directory listing: on Windows, <code>dir $env:USERPROFILE\\.ssh</code>, on Mac/Linux, <code>ls -la ~/.ssh</code>. You're looking for a file named exactly <code>config</code>, no extension at all. If you see <code>config.txt</code>, rename it: <code>Rename-Item $env:USERPROFILE\\.ssh\\config.txt config</code> on Windows, or <code>mv ~/.ssh/config.txt ~/.ssh/config</code> on Mac/Linux."
+  },
+  {
+    q: "It still asks for a password after copying the key over",
+    a: "Most common cause: the server's <code>authorized_keys</code> file or <code>.ssh</code> folder has permissions that are too open, and SSH refuses to trust it as a security precaution. On the server, run: <code>chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys</code>. Second most common cause: a typo in the config file's <code>IdentityFile</code> path pointing at the wrong key."
+  },
+  {
+    q: "Permissions 0644 for '...' are too open (Mac/Linux only)",
+    a: "SSH is refusing to use your private key because other users on the system could technically read it. Fix it with <code>chmod 600 ~/.ssh/your-key-name</code>. This check doesn't exist on Windows, which is why this error is Mac/Linux-specific."
+  },
+  {
+    q: "I generated a new key and now nothing works",
+    a: "Generating a new key pair does not automatically update any server to trust it. You have to repeat the 'copy the public key to the server' step for every server you want this new key to unlock, and update any config file entries pointing at the old filename."
+  },
+  {
+    q: "I lost my private key and password login is disabled",
+    a: "The only way back in is physical access to the machine (or, for a cloud VPS, the provider's web-based console). Log in locally with the account password, which still works for local console login even when remote password login over SSH is disabled, then add a new public key to <code>~/.ssh/authorized_keys</code>. This is exactly the scenario the backup section above exists to prevent."
+  }
+];
+const list = document.getElementById('troubleList');
+list.innerHTML = troubleData.map((t,i)=>`
+  <div class="trouble-item" id="trouble-${i}">
+    <div class="trouble-q" onclick="toggleTrouble(${i})">
+      <span class="sym">✕</span><span>${t.q}</span><span class="chev">▸</span>
+    </div>
+    <div class="trouble-a"><div class="trouble-a-inner">${t.a}</div></div>
+  </div>
+`).join('');
+function toggleTrouble(i){ document.getElementById('trouble-'+i).classList.toggle('open'); }
+
+function copyCode(id, btn){
+  const text = document.getElementById(id).textContent;
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+  btn.textContent = 'COPIED';
+  btn.classList.add('copied');
+  setTimeout(()=>{ btn.textContent='COPY'; btn.classList.remove('copied'); }, 1500);
+}
+
+document.querySelectorAll('.os-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.os-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const os = btn.dataset.os;
+    document.querySelectorAll('.plat-block').forEach(pb=>{
+      pb.classList.toggle('show', pb.dataset.plat===os);
+    });
+  });
+});
+</script>
+<script src="../../assets/course-nav.js"></script>
+</body>
+</html>
